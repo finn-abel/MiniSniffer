@@ -3,19 +3,17 @@
 #include "common.h"
 
 const char *protocol_to_string(Protocol protocol) {
-    /* Keep protocol display strings lowercase to match accepted CLI values. */
+    /* Keep display strings centralized so capture summaries stay consistent. */
     switch (protocol) {
-        case PROTO_IPV4:
-            return "IPv4";
         case PROTO_TCP:
-            return "tcp";
+            return "TCP";
         case PROTO_UDP:
-            return "udp";
+            return "UDP";
         case PROTO_ICMP:
-            return "icmp";
+            return "ICMP";
         case PROTO_OTHER:
         default:
-            return "other";
+            return "OTHER";
     }
 }
 

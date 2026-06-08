@@ -5,11 +5,10 @@
 #include "common.h"
 
 static void test_protocol_to_string_returns_known_values(void) {
-    assert(strcmp(protocol_to_string(PROTO_IPV4), "IPv4") == 0);
-    assert(strcmp(protocol_to_string(PROTO_TCP), "tcp") == 0);
-    assert(strcmp(protocol_to_string(PROTO_UDP), "udp") == 0);
-    assert(strcmp(protocol_to_string(PROTO_ICMP), "icmp") == 0);
-    assert(strcmp(protocol_to_string(PROTO_OTHER), "other") == 0);
+    assert(strcmp(protocol_to_string(PROTO_TCP), "TCP") == 0);
+    assert(strcmp(protocol_to_string(PROTO_UDP), "UDP") == 0);
+    assert(strcmp(protocol_to_string(PROTO_ICMP), "ICMP") == 0);
+    assert(strcmp(protocol_to_string(PROTO_OTHER), "OTHER") == 0);
 }
 
 static void test_protocol_from_string_accepts_known_values(void) {

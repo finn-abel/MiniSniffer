@@ -25,17 +25,99 @@ static void test_parser_parse_packet_marks_short_frame_as_other(void) {
     assert(info.size == sizeof(packet));
 }
 
-static void test_parser_parse_packet_detects_ipv4_ethertype(void) {
+static void test_parser_parse_packet_parses_tcp_ipv4_metadata(void) {
     const unsigned char packet[] = {
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
         0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
-        0x08, 0x00
+        0x08, 0x00,
+        0x45, 0x00, 0x00, 0x14,
+        0x00, 0x00, 0x00, 0x00,
+        0x40, 0x06, 0x00, 0x00,
+        0xc0, 0xa8, 0x01, 0x19,
+        0x8e, 0xfa, 0xbe, 0x0e
     };
     PacketInfo info;
 
     assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
-    assert(info.protocol == PROTO_IPV4);
+    assert(info.protocol == PROTO_TCP);
+    assert(strcmp(info.src_ip, "192.168.1.25") == 0);
+    assert(strcmp(info.dst_ip, "142.250.190.14") == 0);
     assert(info.size == sizeof(packet));
+    assert(info.has_ports == 0);
+}
+
+static void test_parser_parse_packet_parses_udp_ipv4_metadata(void) {
+    const unsigned char packet[] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+        0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+        0x08, 0x00,
+        0x45, 0x00, 0x00, 0x14,
+        0x00, 0x00, 0x00, 0x00,
+        0x40, 0x11, 0x00, 0x00,
+        0xc0, 0xa8, 0x01, 0x19,
+        0x01, 0x01, 0x01, 0x01
+    };
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_UDP);
+    assert(strcmp(info.src_ip, "192.168.1.25") == 0);
+    assert(strcmp(info.dst_ip, "1.1.1.1") == 0);
+}
+
+static void test_parser_parse_packet_parses_icmp_ipv4_metadata(void) {
+    const unsigned char packet[] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+        0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+        0x08, 0x00,
+        0x45, 0x00, 0x00, 0x14,
+        0x00, 0x00, 0x00, 0x00,
+        0x40, 0x01, 0x00, 0x00,
+        0xc0, 0xa8, 0x01, 0x19,
+        0x08, 0x08, 0x08, 0x08
+    };
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_ICMP);
+    assert(strcmp(info.src_ip, "192.168.1.25") == 0);
+    assert(strcmp(info.dst_ip, "8.8.8.8") == 0);
+}
+
+static void test_parser_parse_packet_rejects_invalid_ipv4_version(void) {
+    const unsigned char packet[] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+        0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+        0x08, 0x00,
+        0x65, 0x00, 0x00, 0x14,
+        0x00, 0x00, 0x00, 0x00,
+        0x40, 0x06, 0x00, 0x00,
+        0xc0, 0xa8, 0x01, 0x19,
+        0x8e, 0xfa, 0xbe, 0x0e
+    };
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_OTHER);
+    assert(strcmp(info.src_ip, "") == 0);
+    assert(strcmp(info.dst_ip, "") == 0);
+}
+
+static void test_parser_parse_packet_rejects_short_ipv4_header(void) {
+    const unsigned char packet[] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+        0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+        0x08, 0x00,
+        0x44, 0x00, 0x00, 0x10,
+        0x00, 0x00, 0x00, 0x00,
+        0x40, 0x06, 0x00, 0x00,
+        0xc0, 0xa8, 0x01, 0x19,
+        0x8e, 0xfa, 0xbe, 0x0e
+    };
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_OTHER);
 }
 
 static void test_parser_parse_packet_marks_non_ipv4_ethertype_as_other(void) {
@@ -60,7 +142,11 @@ static void test_parser_parse_packet_rejects_null_info(void) {
 int main(void) {
     test_parser_parse_packet_initializes_basic_info();
     test_parser_parse_packet_marks_short_frame_as_other();
-    test_parser_parse_packet_detects_ipv4_ethertype();
+    test_parser_parse_packet_parses_tcp_ipv4_metadata();
+    test_parser_parse_packet_parses_udp_ipv4_metadata();
+    test_parser_parse_packet_parses_icmp_ipv4_metadata();
+    test_parser_parse_packet_rejects_invalid_ipv4_version();
+    test_parser_parse_packet_rejects_short_ipv4_header();
     test_parser_parse_packet_marks_non_ipv4_ethertype_as_other();
     test_parser_parse_packet_rejects_null_info();
 

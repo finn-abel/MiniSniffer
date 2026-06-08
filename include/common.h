@@ -10,7 +10,6 @@
  * Filters, logs, and stats use it for consistent behavior.
  */
 typedef enum {
-    PROTO_IPV4,
     PROTO_TCP,
     PROTO_UDP,
     PROTO_ICMP,
