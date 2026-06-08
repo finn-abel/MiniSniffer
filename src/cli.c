@@ -6,53 +6,6 @@
 
 #include "cli.h"
 
-/*
- * Keep protocol display text close to parsing for now.
- * This can move to common.c when shared modules are split out further.
- */
-const char *protocol_to_string(Protocol protocol) {
-    switch (protocol) {
-        case PROTO_TCP:
-            return "tcp";
-        case PROTO_UDP:
-            return "udp";
-        case PROTO_ICMP:
-            return "icmp";
-        case PROTO_OTHER:
-        default:
-            return "other";
-    }
-}
-
-/*
- * Convert user-provided protocol text into the enum used by AppConfig.
- * Only the planned public protocol names are accepted.
- */
-int protocol_from_string(const char *text, Protocol *protocol) {
-    if (text == NULL || protocol == NULL) {
-        return 1;
-    }
-
-    if (strcmp(text, "tcp") == 0) {
-        *protocol = PROTO_TCP;
-        return 0;
-    }
-    if (strcmp(text, "udp") == 0) {
-        *protocol = PROTO_UDP;
-        return 0;
-    }
-    if (strcmp(text, "icmp") == 0) {
-        *protocol = PROTO_ICMP;
-        return 0;
-    }
-    if (strcmp(text, "other") == 0) {
-        *protocol = PROTO_OTHER;
-        return 0;
-    }
-
-    return 1;
-}
-
 void cli_print_usage(const char *program_name) {
     const char *name = program_name == NULL ? "PacketScope" : program_name;
 

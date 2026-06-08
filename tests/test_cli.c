@@ -167,27 +167,6 @@ static void test_cli_parse_args_rejects_long_host(void) {
     assert(cli_parse_args(3, argv, &config) != 0);
 }
 
-static void test_protocol_from_string_accepts_known_values(void) {
-    Protocol protocol;
-
-    assert(protocol_from_string("tcp", &protocol) == 0);
-    assert(protocol == PROTO_TCP);
-    assert(protocol_from_string("udp", &protocol) == 0);
-    assert(protocol == PROTO_UDP);
-    assert(protocol_from_string("icmp", &protocol) == 0);
-    assert(protocol == PROTO_ICMP);
-    assert(protocol_from_string("other", &protocol) == 0);
-    assert(protocol == PROTO_OTHER);
-}
-
-static void test_protocol_from_string_rejects_unknown_values(void) {
-    Protocol protocol = PROTO_OTHER;
-
-    assert(protocol_from_string("fake", &protocol) != 0);
-    assert(protocol_from_string(NULL, &protocol) != 0);
-    assert(protocol_from_string("tcp", NULL) != 0);
-}
-
 static void test_cli_print_usage_accepts_null_program_name(void) {
     cli_print_usage(NULL);
 }
@@ -209,8 +188,6 @@ int main(void) {
     test_cli_parse_args_rejects_invalid_port();
     test_cli_parse_args_rejects_zero_count();
     test_cli_parse_args_rejects_long_host();
-    test_protocol_from_string_accepts_known_values();
-    test_protocol_from_string_rejects_unknown_values();
     test_cli_print_usage_accepts_null_program_name();
 
     printf("All cli tests passed.\n");
