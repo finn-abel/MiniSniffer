@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror -std=c11 -g -Iinclude
+CFLAGS = -std=c11 -Wall -Wextra -Werror -g -Iinclude
 LDFLAGS = -lpcap
 
 TARGET = PacketScope
