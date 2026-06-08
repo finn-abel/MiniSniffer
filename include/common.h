@@ -58,4 +58,11 @@ typedef struct {
  */
 const char *protocol_to_string(Protocol protocol);
 
+/*
+ * Parses a protocol name into a Protocol value.
+ * Returns 0 for tcp, udp, icmp, or other.
+ * Returns non-zero when text does not name a supported protocol.
+ */
+int protocol_from_string(const char *text, Protocol *protocol);
+
 #endif
