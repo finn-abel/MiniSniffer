@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "capture.h"
 #include "cli.h"
 #include "config.h"
 
@@ -51,5 +52,5 @@ int main(int argc, char **argv) {
         printf("Log file: %s\n", config.log_path);
     }
 
-    return 0;
+    return capture_start(&config);
 }
