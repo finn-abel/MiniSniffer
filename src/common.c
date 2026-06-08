@@ -5,6 +5,8 @@
 const char *protocol_to_string(Protocol protocol) {
     /* Keep protocol display strings lowercase to match accepted CLI values. */
     switch (protocol) {
+        case PROTO_IPV4:
+            return "IPv4";
         case PROTO_TCP:
             return "tcp";
         case PROTO_UDP:
