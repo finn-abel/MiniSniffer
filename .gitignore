@@ -1,0 +1,25 @@
+# Build output
+PacketScope
+*.o
+*.out
+*.exe
+
+# Debug files
+*.dSYM/
+*.log
+
+# Packet/log output
+*.pcap
+*.csv
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.swp
+
+#agent file
+AGENT.md
