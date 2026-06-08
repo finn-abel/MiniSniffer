@@ -32,10 +32,15 @@ static void test_protocol_from_string_rejects_unknown_values(void) {
     assert(protocol_from_string("tcp", NULL) != 0);
 }
 
+static void test_packet_info_print_accepts_null_info(void) {
+    packet_info_print(NULL);
+}
+
 int main(void) {
     test_protocol_to_string_returns_known_values();
     test_protocol_from_string_accepts_known_values();
     test_protocol_from_string_rejects_unknown_values();
+    test_packet_info_print_accepts_null_info();
 
     printf("All common tests passed.\n");
 

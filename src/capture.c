@@ -92,16 +92,9 @@ int capture_start(const AppConfig *config) {
             return 1;
         }
 
-        if (info.src_ip[0] != '\0' && info.dst_ip[0] != '\0') {
-            printf("%-4s %s -> %s size=%zu\n",
-                   protocol_to_string(info.protocol),
-                   info.src_ip,
-                   info.dst_ip,
-                   info.size);
-        } else {
-            printf("%s size=%zu\n", protocol_to_string(info.protocol), info.size);
-        }
         captured_packets++;
+        info.packet_number = captured_packets;
+        packet_info_print(&info);
     }
 
     pcap_close(handle);

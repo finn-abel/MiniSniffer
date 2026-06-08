@@ -65,4 +65,10 @@ const char *protocol_to_string(Protocol protocol);
  */
 int protocol_from_string(const char *text, Protocol *protocol);
 
+/*
+ * Prints one readable packet summary line.
+ * The line includes packet number, protocol, addresses when available, and size.
+ */
+void packet_info_print(const PacketInfo *info);
+
 #endif

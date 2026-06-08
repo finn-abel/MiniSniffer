@@ -11,7 +11,24 @@
 #define IPV4_PROTOCOL_ICMP 1
 #define IPV4_PROTOCOL_TCP 6
 #define IPV4_PROTOCOL_UDP 17
+#define TCP_MIN_HEADER_LEN 20
+#define UDP_HEADER_LEN 8
 
+/*
+ * Reads a two-byte network-order integer without assuming packet alignment.
+ * Raw packet pointers may not be aligned enough for direct integer access.
+ */
+static uint16_t read_u16_network(const unsigned char *bytes) {
+    uint16_t value;
+
+    memcpy(&value, bytes, sizeof(value));
+    return ntohs(value);
+}
+
+/*
+ * Maps the IPv4 protocol number into PacketScope's shared protocol enum.
+ * Unsupported protocol numbers intentionally collapse to PROTO_OTHER.
+ */
 static void set_ipv4_protocol(unsigned char protocol_number, PacketInfo *info) {
     if (protocol_number == IPV4_PROTOCOL_ICMP) {
         info->protocol = PROTO_ICMP;
@@ -22,6 +39,60 @@ static void set_ipv4_protocol(unsigned char protocol_number, PacketInfo *info) {
     } else {
         info->protocol = PROTO_OTHER;
     }
+}
+
+/*
+ * TCP ports are the first four bytes of the TCP header.
+ * Only parse them after confirming the captured packet includes the minimum header.
+ */
+static void parse_tcp_ports(
+    const unsigned char *packet,
+    size_t packet_len,
+    size_t tcp_offset,
+    PacketInfo *info
+) {
+    const unsigned char *tcp_header;
+
+    if (packet_len < tcp_offset + TCP_MIN_HEADER_LEN) {
+        return;
+    }
+
+    tcp_header = packet + tcp_offset;
+    info->src_port = read_u16_network(tcp_header);
+    info->dst_port = read_u16_network(tcp_header + 2);
+    info->has_ports = 1;
+}
+
+/*
+ * UDP ports are the first four bytes of the fixed eight-byte UDP header.
+ * If the capture is truncated before the full UDP header, leave ports unset.
+ */
+static void parse_udp_ports(
+    const unsigned char *packet,
+    size_t packet_len,
+    size_t udp_offset,
+    PacketInfo *info
+) {
+    const unsigned char *udp_header;
+
+    if (packet_len < udp_offset + UDP_HEADER_LEN) {
+        return;
+    }
+
+    udp_header = packet + udp_offset;
+    info->src_port = read_u16_network(udp_header);
+    info->dst_port = read_u16_network(udp_header + 2);
+    info->has_ports = 1;
+}
+
+/*
+ * Transport ports are opt-in metadata.
+ * Clear them before parsing each packet so ICMP and OTHER never show stale ports.
+ */
+static void clear_transport_ports(PacketInfo *info) {
+    info->src_port = 0;
+    info->dst_port = 0;
+    info->has_ports = 0;
 }
 
 int parser_parse_packet(
@@ -57,6 +128,7 @@ int parser_parse_packet(
     }
 
     /*
+     * Ethernet parsing is the first gate.
      * Ethernet EtherType lives at bytes 12-13.
      * Copy bytes out before ntohs so raw packet memory is never direct-cast.
      */
@@ -71,6 +143,11 @@ int parser_parse_packet(
         return 0;
     }
 
+    /*
+     * IPv4 starts immediately after Ethernet.
+     * The first byte contains both version and IHL, so validate both before
+     * reading any deeper IPv4 fields.
+     */
     ip_header = packet + ETHERNET_HEADER_LEN;
     ip_version = (unsigned char)(ip_header[0] >> 4);
     ip_header_len = (size_t)(ip_header[0] & 0x0F) * 4;
@@ -93,8 +170,19 @@ int parser_parse_packet(
         return 1;
     }
 
+    /*
+     * Transport metadata starts after the variable-length IPv4 header.
+     * ICMP has no ports, while TCP and UDP expose source and destination ports.
+     */
     set_ipv4_protocol(ip_header[9], info);
-    info->has_ports = 0;
+    clear_transport_ports(info);
+    if (info->protocol == PROTO_TCP) {
+        parse_tcp_ports(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+    } else if (info->protocol == PROTO_UDP) {
+        parse_udp_ports(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+    } else if (info->protocol == PROTO_ICMP) {
+        clear_transport_ports(info);
+    }
 
     return 0;
 }

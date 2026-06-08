@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 
 #include "common.h"
@@ -41,4 +42,38 @@ int protocol_from_string(const char *text, Protocol *protocol) {
     }
 
     return 1;
+}
+
+void packet_info_print(const PacketInfo *info) {
+    if (info == NULL) {
+        return;
+    }
+
+    /* Include addresses when IPv4 parsing has filled both endpoint strings. */
+    if (info->src_ip[0] != '\0' && info->dst_ip[0] != '\0') {
+        if (info->has_ports != 0) {
+            printf("[%03u] %-4s %s:%u -> %s:%u size=%zu\n",
+                   info->packet_number,
+                   protocol_to_string(info->protocol),
+                   info->src_ip,
+                   (unsigned int)info->src_port,
+                   info->dst_ip,
+                   (unsigned int)info->dst_port,
+                   info->size);
+            return;
+        }
+
+        printf("[%03u] %-4s %s -> %s size=%zu\n",
+               info->packet_number,
+               protocol_to_string(info->protocol),
+               info->src_ip,
+               info->dst_ip,
+               info->size);
+        return;
+    }
+
+    printf("[%03u] %-4s size=%zu\n",
+           info->packet_number,
+           protocol_to_string(info->protocol),
+           info->size);
 }
