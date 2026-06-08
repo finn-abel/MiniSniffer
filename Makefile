@@ -4,7 +4,7 @@ LDFLAGS = -lpcap
 
 TARGET = PacketScope
 
-SRC = src/main.c
+SRC = src/main.c src/config.c
 OBJ = $(SRC:.c=.o)
 
 all: $(TARGET)
