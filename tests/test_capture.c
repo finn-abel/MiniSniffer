@@ -4,7 +4,7 @@
 #include "capture.h"
 
 static void test_capture_start_rejects_null_config(void) {
-    assert(capture_start(NULL) != 0);
+    assert(capture_start(NULL, NULL) != 0);
 }
 
 int main(void) {

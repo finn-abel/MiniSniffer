@@ -6,10 +6,10 @@ LDLIBS = -lpcap
 TARGET = PacketScope
 
 # Add normal project source files here.
-SRC = src/main.c src/config.c src/cli.c src/common.c src/capture.c src/parser.c src/filter.c
+SRC = src/main.c src/config.c src/cli.c src/common.c src/capture.c src/parser.c src/filter.c src/logger.c src/stats.c
 
 # Add test source files here.
-TEST_SRC = tests/test_config.c tests/test_cli.c tests/test_common.c tests/test_capture.c tests/test_parser.c tests/test_filter.c
+TEST_SRC = tests/test_config.c tests/test_cli.c tests/test_common.c tests/test_capture.c tests/test_parser.c tests/test_filter.c tests/test_logger.c tests/test_stats.c
 
 OBJ = $(SRC:.c=.o)
 

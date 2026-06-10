@@ -4,6 +4,8 @@
 #include "capture.h"
 #include "cli.h"
 #include "config.h"
+#include "logger.h"
+#include "stats.h"
 
 static int args_requested_help(int argc, char **argv) {
     int i;
@@ -19,6 +21,8 @@ static int args_requested_help(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     AppConfig config;
+    PacketStats stats;
+    int capture_result;
 
     /* Start from safe defaults before applying CLI options. */
     config_init_defaults(&config);
@@ -52,5 +56,19 @@ int main(int argc, char **argv) {
         printf("Log file: %s\n", config.log_path);
     }
 
-    return capture_start(&config);
+    stats_init(&stats);
+
+    if (config.logging_enabled != 0 && logger_open(config.log_path) != 0) {
+        fprintf(stderr, "Unable to open log file: %s\n", config.log_path);
+        return 1;
+    }
+
+    capture_result = capture_start(&config, &stats);
+    logger_close();
+
+    if (config.stats_mode != 0) {
+        stats_print(&stats);
+    }
+
+    return capture_result;
 }

@@ -3,12 +3,18 @@
 
 #include "capture.h"
 #include "filter.h"
+#include "logger.h"
 #include "parser.h"
+#include "stats.h"
 
 #define CAPTURE_SNAPLEN 65535
 #define CAPTURE_PROMISCUOUS 0
 #define CAPTURE_TIMEOUT_MS 1000
 
+/*
+ * Chooses the default libpcap device when the user does not pass --interface.
+ * The wrapper keeps the deprecation suppression contained to this one call.
+ */
 static const char *lookup_default_device(char *error_buffer) {
     /*
      * Step 8 intentionally uses pcap_lookupdev.
@@ -31,7 +37,11 @@ static const char *lookup_default_device(char *error_buffer) {
     return device;
 }
 
-int capture_start(const AppConfig *config) {
+/*
+ * Opens a live packet capture and processes packets until the displayed count
+ * reaches config->max_packets, or forever when max_packets is zero.
+ */
+int capture_start(const AppConfig *config, PacketStats *stats) {
     char error_buffer[PCAP_ERRBUF_SIZE];
     const char *device;
     pcap_t *handle;
@@ -41,7 +51,10 @@ int capture_start(const AppConfig *config) {
         return 1;
     }
 
-    /* Empty interface means libpcap should choose the default capture device. */
+    /*
+     * Empty interface means libpcap should choose the default capture device.
+     * Otherwise, use the exact interface name parsed from the CLI.
+     */
     if (config->interface_name[0] == '\0') {
         device = lookup_default_device(error_buffer);
         if (device == NULL) {
@@ -55,6 +68,10 @@ int capture_start(const AppConfig *config) {
     printf("Starting capture on interface: %s\n", device);
     printf("Capture would start now.\n");
 
+    /*
+     * Open a live capture handle with conservative local-capture settings:
+     * full snap length, non-promiscuous mode, and a one-second timeout.
+     */
     handle = pcap_open_live(
         device,
         CAPTURE_SNAPLEN,
@@ -74,6 +91,10 @@ int capture_start(const AppConfig *config) {
         PacketInfo info;
         int result;
 
+        /*
+         * pcap_next_ex returns 1 for a packet, 0 for timeout, -1 for error,
+         * and -2 when an offline source is exhausted.
+         */
         result = pcap_next_ex(handle, &header, &packet);
         if (result == 0) {
             continue;
@@ -96,9 +117,15 @@ int capture_start(const AppConfig *config) {
             continue;
         }
 
+        /*
+         * Only displayed packets are numbered, printed, logged, counted for
+         * stats, and considered toward --count.
+         */
         captured_packets++;
         info.packet_number = captured_packets;
         packet_info_print(&info);
+        logger_write(&info);
+        stats_update(stats, &info);
     }
 
     pcap_close(handle);
