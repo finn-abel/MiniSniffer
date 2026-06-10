@@ -167,6 +167,15 @@ static void test_cli_parse_args_rejects_long_host(void) {
     assert(cli_parse_args(3, argv, &config) != 0);
 }
 
+static void test_cli_parse_args_rejects_invalid_host(void) {
+    AppConfig config;
+    char *argv[] = {"PacketScope", "--host", "999.1.1.1"};
+
+    config_init_defaults(&config);
+
+    assert(cli_parse_args(3, argv, &config) != 0);
+}
+
 static void test_cli_print_usage_accepts_null_program_name(void) {
     cli_print_usage(NULL);
 }
@@ -188,6 +197,7 @@ int main(void) {
     test_cli_parse_args_rejects_invalid_port();
     test_cli_parse_args_rejects_zero_count();
     test_cli_parse_args_rejects_long_host();
+    test_cli_parse_args_rejects_invalid_host();
     test_cli_print_usage_accepts_null_program_name();
 
     printf("All cli tests passed.\n");

@@ -7,7 +7,8 @@
 
 /*
  * Parses raw packet bytes into a PacketInfo summary.
- * This skeleton only records packet size and marks packets as PROTO_OTHER.
+ * Recognizes Ethernet IPv4 packets and extracts protocol, endpoint addresses,
+ * and TCP/UDP ports when those headers are present.
  * Returns 0 when the PacketInfo output is initialized successfully.
  */
 int parser_parse_packet(

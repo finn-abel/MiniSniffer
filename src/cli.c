@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -90,6 +91,12 @@ static int fail_invalid_port(const char *program_name) {
     return 1;
 }
 
+static int fail_invalid_host(const char *program_name) {
+    fprintf(stderr, "Error: host must be a valid IPv4 address.\n");
+    print_usage(stderr, program_name);
+    return 1;
+}
+
 int cli_parse_args(int argc, char **argv, AppConfig *config) {
     const char *program_name = argc > 0 ? argv[0] : "PacketScope";
     int i;
@@ -98,7 +105,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
         return fail_with_error(program_name, "internal configuration is unavailable.");
     }
 
-    /* Parse only metadata-oriented options; capture behavior is added later. */
+    /* Parse CLI options into the runtime configuration used by capture. */
     for (i = 1; i < argc; i++) {
         /* --help is terminal: print usage and stop parsing. */
         if (strcmp(argv[i], "--help") == 0) {
@@ -148,14 +155,18 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             config->filter_port = (uint16_t)port;
             i++;
         } else if (strcmp(argv[i], "--host") == 0) {
-            /* copy_arg enforces the AppConfig char[16] IPv4 host buffer limit. */
+            struct in_addr address;
+
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--host requires a value.");
+            }
+            if (inet_pton(AF_INET, argv[i + 1], &address) != 1) {
+                return fail_invalid_host(program_name);
             }
             if (copy_arg(config->filter_host,
                          sizeof(config->filter_host),
                          argv[i + 1]) != 0) {
-                return fail_with_error(program_name, "host must fit in an IPv4 string buffer.");
+                return fail_invalid_host(program_name);
             }
             config->filter_host_enabled = 1;
             i++;

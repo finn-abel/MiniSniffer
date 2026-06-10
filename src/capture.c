@@ -2,6 +2,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 
 #include "capture.h"
 #include "filter.h"
@@ -12,38 +13,13 @@
 #define CAPTURE_SNAPLEN 65535
 #define CAPTURE_PROMISCUOUS 0
 #define CAPTURE_TIMEOUT_MS 1000
+#define CAPTURE_DEVICE_NAME_LEN 128
 
 static volatile sig_atomic_t should_stop = 0;
 
 static void handle_sigint(int signal_number) {
     (void)signal_number;
     should_stop = 1;
-}
-
-/*
- * Chooses the default libpcap device when the user does not pass --interface.
- * The wrapper keeps the deprecation suppression contained to this one call.
- */
-static const char *lookup_default_device(char *error_buffer) {
-    /*
-     * Step 8 intentionally uses pcap_lookupdev.
-     * Some SDKs mark it deprecated, so silence only that warning locally.
-     */
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-    const char *device = pcap_lookupdev(error_buffer);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
-    return device;
 }
 
 static int install_sigint_handler(void) {
@@ -69,12 +45,132 @@ static void print_open_live_error(const char *device, const char *error_message)
     }
 }
 
+static int has_ipv4_address(const pcap_if_t *device) {
+    pcap_addr_t *address;
+
+    for (address = device->addresses; address != NULL; address = address->next) {
+        if (address->addr != NULL && address->addr->sa_family == AF_INET) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int is_loopback_device(const pcap_if_t *device) {
+    return (device->flags & PCAP_IF_LOOPBACK) != 0;
+}
+
+static int is_apple_internal_device_name(const char *name) {
+    if (name == NULL) {
+        return 0;
+    }
+
+    return strncmp(name, "ap", 2) == 0 ||
+           strncmp(name, "awdl", 4) == 0 ||
+           strncmp(name, "llw", 3) == 0 ||
+           strncmp(name, "utun", 4) == 0;
+}
+
+static int is_preferred_default_device(const pcap_if_t *device) {
+    return device->name != NULL &&
+           strncmp(device->name, "en", 2) == 0 &&
+           !is_loopback_device(device) &&
+           !is_apple_internal_device_name(device->name) &&
+           has_ipv4_address(device);
+}
+
+static int copy_device_name(char *destination, size_t destination_size, const char *name) {
+    size_t length;
+
+    if (destination == NULL || name == NULL || destination_size == 0) {
+        return 1;
+    }
+
+    length = strlen(name);
+    if (length >= destination_size) {
+        return 1;
+    }
+
+    memcpy(destination, name, length + 1);
+    return 0;
+}
+
+/*
+ * Choose a practical default instead of trusting pcap_lookupdev, which often
+ * returns macOS internal interfaces such as ap1.
+ */
+static int choose_default_device(
+    char *device_name,
+    size_t device_name_size,
+    char *error_buffer
+) {
+    pcap_if_t *devices = NULL;
+    pcap_if_t *current;
+    const char *fallback = NULL;
+
+    if (pcap_findalldevs(&devices, error_buffer) != 0) {
+        return 1;
+    }
+
+    for (current = devices; current != NULL; current = current->next) {
+        if (is_preferred_default_device(current)) {
+            if (copy_device_name(device_name, device_name_size, current->name) != 0) {
+                pcap_freealldevs(devices);
+                return 1;
+            }
+            pcap_freealldevs(devices);
+            return 0;
+        }
+    }
+
+    for (current = devices; current != NULL; current = current->next) {
+        if (current->name != NULL &&
+            !is_loopback_device(current) &&
+            !is_apple_internal_device_name(current->name) &&
+            has_ipv4_address(current)) {
+            if (copy_device_name(device_name, device_name_size, current->name) != 0) {
+                pcap_freealldevs(devices);
+                return 1;
+            }
+            pcap_freealldevs(devices);
+            return 0;
+        }
+    }
+
+    for (current = devices; current != NULL; current = current->next) {
+        if (fallback == NULL &&
+            current->name != NULL &&
+            !is_loopback_device(current) &&
+            !is_apple_internal_device_name(current->name)) {
+            fallback = current->name;
+        }
+    }
+
+    if (fallback == NULL) {
+        for (current = devices; current != NULL; current = current->next) {
+            if (current->name != NULL && !is_loopback_device(current)) {
+                fallback = current->name;
+                break;
+            }
+        }
+    }
+
+    if (fallback == NULL || copy_device_name(device_name, device_name_size, fallback) != 0) {
+        pcap_freealldevs(devices);
+        return 1;
+    }
+
+    pcap_freealldevs(devices);
+    return 0;
+}
+
 static int interface_exists(const char *device, char *error_buffer) {
     pcap_if_t *devices = NULL;
     pcap_if_t *current;
 
     if (pcap_findalldevs(&devices, error_buffer) != 0) {
-        return 1;
+        return 0;
     }
 
     for (current = devices; current != NULL; current = current->next) {
@@ -94,6 +190,7 @@ static int interface_exists(const char *device, char *error_buffer) {
  */
 int capture_start(const AppConfig *config, PacketStats *stats) {
     char error_buffer[PCAP_ERRBUF_SIZE];
+    char default_device[CAPTURE_DEVICE_NAME_LEN];
     const char *device;
     pcap_t *handle;
     uint32_t captured_packets = 0;
@@ -109,15 +206,15 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     }
 
     /*
-     * Empty interface means libpcap should choose the default capture device.
+     * Empty interface means choose a practical default capture device.
      * Otherwise, use the exact interface name parsed from the CLI.
      */
     if (config->interface_name[0] == '\0') {
-        device = lookup_default_device(error_buffer);
-        if (device == NULL) {
+        if (choose_default_device(default_device, sizeof(default_device), error_buffer) != 0) {
             fprintf(stderr, "Error: no default capture device found: %s\n", error_buffer);
             return 1;
         }
+        device = default_device;
     } else {
         device = config->interface_name;
         if (!interface_exists(device, error_buffer)) {
@@ -127,7 +224,6 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     }
 
     printf("Starting capture on interface: %s\n", device);
-    printf("Capture would start now.\n");
 
     /*
      * Open a live capture handle with conservative local-capture settings:
