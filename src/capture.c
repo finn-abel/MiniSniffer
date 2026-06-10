@@ -282,6 +282,9 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         captured_packets++;
         info.packet_number = captured_packets;
         packet_info_print(&info);
+        if (config->payload_display_enabled != 0) {
+            packet_info_print_payload(&info, config->payload_preview_bytes);
+        }
         logger_write(&info);
         stats_update(stats, &info);
     }

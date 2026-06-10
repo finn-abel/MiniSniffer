@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <ctype.h>
 #include <string.h>
 
 #include "common.h"
@@ -76,4 +77,40 @@ void packet_info_print(const PacketInfo *info) {
            info->packet_number,
            protocol_to_string(info->protocol),
            info->size);
+}
+
+void packet_info_print_payload(const PacketInfo *info, size_t preview_limit) {
+    size_t limit;
+    size_t i;
+
+    if (info == NULL || info->has_payload == 0) {
+        return;
+    }
+
+    limit = info->payload_preview_length;
+    if (limit > preview_limit) {
+        limit = preview_limit;
+    }
+
+    printf("      payload length=%zu preview=%zu", info->payload_length, limit);
+    if (info->payload_length > limit) {
+        printf("/%zu", info->payload_length);
+    }
+    printf("\n");
+
+    printf("      hex: ");
+    for (i = 0; i < limit; i++) {
+        printf("%02x", info->payload_preview[i]);
+        if (i + 1 < limit) {
+            printf(" ");
+        }
+    }
+    printf("\n");
+
+    printf("      ascii: ");
+    for (i = 0; i < limit; i++) {
+        unsigned char value = info->payload_preview[i];
+        printf("%c", isprint(value) ? value : '.');
+    }
+    printf("\n");
 }

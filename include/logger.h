@@ -11,6 +11,11 @@
 int logger_open(const char *path);
 
 /*
+ * Controls whether CSV logs include payload preview columns.
+ */
+void logger_set_payload_logging(int enabled, size_t preview_limit);
+
+/*
  * Writes one displayed packet to the active CSV log.
  * If logging is not open, this function does nothing.
  */

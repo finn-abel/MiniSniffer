@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES 256
+
 /*
  * Protocol describes the coarse protocol category for a packet.
  * Parsers assign this value after inspecting packet headers.
@@ -19,7 +21,7 @@ typedef enum {
 /*
  * PacketInfo represents one captured packet after basic parsing.
  * It stores source and destination IPv4 addresses, optional transport ports,
- * protocol type, packet number, and packet size.
+ * protocol type, packet number, packet size, and a bounded payload preview.
  * has_ports is non-zero only when src_port and dst_port are valid.
  */
 typedef struct {
@@ -35,6 +37,11 @@ typedef struct {
     size_t size;
 
     int has_ports;
+
+    int has_payload;
+    size_t payload_length;
+    size_t payload_preview_length;
+    unsigned char payload_preview[PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES];
 } PacketInfo;
 
 /*
@@ -70,5 +77,11 @@ int protocol_from_string(const char *text, Protocol *protocol);
  * The line includes packet number, protocol, addresses when available, and size.
  */
 void packet_info_print(const PacketInfo *info);
+
+/*
+ * Prints a bounded payload preview in hex and printable ASCII.
+ * preview_limit caps how many bytes from PacketInfo's payload preview are shown.
+ */
+void packet_info_print_payload(const PacketInfo *info, size_t preview_limit);
 
 #endif

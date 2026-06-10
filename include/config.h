@@ -5,6 +5,9 @@
 
 #include "common.h"
 
+#define PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES 128
+#define PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES 64
+
 /*
  * AppConfig stores runtime options for one PacketScope-C run.
  * Empty interface_name means the capture layer should choose the default device.
@@ -26,6 +29,17 @@ typedef struct {
 
     int filter_host_enabled;
     char filter_host[16];
+
+    int filter_payload_text_enabled;
+    unsigned char filter_payload_text[PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES];
+    size_t filter_payload_text_length;
+
+    int filter_payload_hex_enabled;
+    unsigned char filter_payload_hex[PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES];
+    size_t filter_payload_hex_length;
+
+    int payload_display_enabled;
+    size_t payload_preview_bytes;
 
     int logging_enabled;
     char log_path[256];

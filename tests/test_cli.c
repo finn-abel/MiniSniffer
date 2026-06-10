@@ -97,6 +97,43 @@ static void test_cli_parse_args_sets_stats(void) {
     assert(config.stats_mode == 1);
 }
 
+static void test_cli_parse_args_sets_payload_display(void) {
+    AppConfig config;
+    char *argv[] = {"PacketScope", "--payload", "--payload-bytes", "32"};
+
+    config_init_defaults(&config);
+
+    assert(cli_parse_args(4, argv, &config) == 0);
+    assert(config.payload_display_enabled == 1);
+    assert(config.payload_preview_bytes == 32);
+}
+
+static void test_cli_parse_args_sets_payload_text_filter(void) {
+    AppConfig config;
+    char *argv[] = {"PacketScope", "--payload-contains", "GET "};
+
+    config_init_defaults(&config);
+
+    assert(cli_parse_args(3, argv, &config) == 0);
+    assert(config.filter_payload_text_enabled == 1);
+    assert(config.filter_payload_text_length == 4);
+    assert(memcmp(config.filter_payload_text, "GET ", 4) == 0);
+}
+
+static void test_cli_parse_args_sets_payload_hex_filter(void) {
+    AppConfig config;
+    char *argv[] = {"PacketScope", "--payload-hex", "47 45 54"};
+
+    config_init_defaults(&config);
+
+    assert(cli_parse_args(3, argv, &config) == 0);
+    assert(config.filter_payload_hex_enabled == 1);
+    assert(config.filter_payload_hex_length == 3);
+    assert(config.filter_payload_hex[0] == 0x47);
+    assert(config.filter_payload_hex[1] == 0x45);
+    assert(config.filter_payload_hex[2] == 0x54);
+}
+
 static void test_cli_parse_args_accepts_combined_filters(void) {
     AppConfig config;
     char *argv[] = {
@@ -176,6 +213,18 @@ static void test_cli_parse_args_rejects_invalid_host(void) {
     assert(cli_parse_args(3, argv, &config) != 0);
 }
 
+static void test_cli_parse_args_rejects_invalid_payload_options(void) {
+    AppConfig config;
+    char *payload_bytes[] = {"PacketScope", "--payload-bytes", "999"};
+    char *payload_hex[] = {"PacketScope", "--payload-hex", "abc"};
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(3, payload_bytes, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(3, payload_hex, &config) != 0);
+}
+
 static void test_cli_print_usage_accepts_null_program_name(void) {
     cli_print_usage(NULL);
 }
@@ -190,6 +239,9 @@ int main(void) {
     test_cli_parse_args_sets_host();
     test_cli_parse_args_sets_log();
     test_cli_parse_args_sets_stats();
+    test_cli_parse_args_sets_payload_display();
+    test_cli_parse_args_sets_payload_text_filter();
+    test_cli_parse_args_sets_payload_hex_filter();
     test_cli_parse_args_accepts_combined_filters();
     test_cli_parse_args_rejects_unknown_flag();
     test_cli_parse_args_rejects_missing_value();
@@ -198,6 +250,7 @@ int main(void) {
     test_cli_parse_args_rejects_zero_count();
     test_cli_parse_args_rejects_long_host();
     test_cli_parse_args_rejects_invalid_host();
+    test_cli_parse_args_rejects_invalid_payload_options();
     test_cli_print_usage_accepts_null_program_name();
 
     printf("All cli tests passed.\n");

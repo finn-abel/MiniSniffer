@@ -53,6 +53,33 @@ static void test_parser_parse_packet_parses_tcp_ipv4_metadata(void) {
     assert(info.dst_port == 443);
 }
 
+static void test_parser_parse_packet_extracts_tcp_payload_preview(void) {
+    const unsigned char packet[] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+        0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+        0x08, 0x00,
+        0x45, 0x00, 0x00, 0x1d,
+        0x00, 0x00, 0x00, 0x00,
+        0x40, 0x06, 0x00, 0x00,
+        0xc0, 0xa8, 0x01, 0x19,
+        0x8e, 0xfa, 0xbe, 0x0e,
+        0xc8, 0xe8, 0x01, 0xbb,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x50, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        'G', 'E', 'T', ' ', '/'
+    };
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_TCP);
+    assert(info.has_payload == 1);
+    assert(info.payload_length == 5);
+    assert(info.payload_preview_length == 5);
+    assert(memcmp(info.payload_preview, "GET /", 5) == 0);
+}
+
 static void test_parser_parse_packet_skips_tcp_ports_when_header_is_short(void) {
     const unsigned char packet[] = {
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
@@ -196,6 +223,7 @@ int main(void) {
     test_parser_parse_packet_initializes_basic_info();
     test_parser_parse_packet_marks_short_frame_as_other();
     test_parser_parse_packet_parses_tcp_ipv4_metadata();
+    test_parser_parse_packet_extracts_tcp_payload_preview();
     test_parser_parse_packet_skips_tcp_ports_when_header_is_short();
     test_parser_parse_packet_parses_udp_ipv4_metadata();
     test_parser_parse_packet_skips_udp_ports_when_header_is_short();

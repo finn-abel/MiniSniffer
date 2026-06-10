@@ -44,6 +44,71 @@ static int host_filter_matches(const AppConfig *config, const PacketInfo *info) 
 }
 
 /*
+ * Binary-safe substring search over the captured payload preview.
+ * Do not use strstr here: packet payloads may contain null bytes.
+ */
+static int payload_contains(
+    const unsigned char *payload,
+    size_t payload_length,
+    const unsigned char *needle,
+    size_t needle_length
+) {
+    size_t i;
+
+    if (payload == NULL || needle == NULL || needle_length == 0) {
+        return 0;
+    }
+    if (payload_length < needle_length) {
+        return 0;
+    }
+
+    /* The <= form is safe because payload_length >= needle_length above. */
+    for (i = 0; i <= payload_length - needle_length; i++) {
+        if (memcmp(payload + i, needle, needle_length) == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Text payload filters are literal byte filters.
+ * They intentionally do not do case folding or encoding conversion.
+ */
+static int payload_text_filter_matches(const AppConfig *config, const PacketInfo *info) {
+    if (config->filter_payload_text_enabled == 0) {
+        return 1;
+    }
+    if (info->has_payload == 0) {
+        return 0;
+    }
+
+    return payload_contains(info->payload_preview,
+                            info->payload_preview_length,
+                            config->filter_payload_text,
+                            config->filter_payload_text_length);
+}
+
+/*
+ * Hex payload filters share the same byte-search path as text filters after
+ * the CLI has decoded the user's hex pattern into raw bytes.
+ */
+static int payload_hex_filter_matches(const AppConfig *config, const PacketInfo *info) {
+    if (config->filter_payload_hex_enabled == 0) {
+        return 1;
+    }
+    if (info->has_payload == 0) {
+        return 0;
+    }
+
+    return payload_contains(info->payload_preview,
+                            info->payload_preview_length,
+                            config->filter_payload_hex,
+                            config->filter_payload_hex_length);
+}
+
+/*
  * A packet is displayable only if every enabled filter accepts it.
  * Null inputs are treated as non-matches to keep callers simple and safe.
  */
@@ -58,5 +123,7 @@ int filter_packet_matches(const AppConfig *config, const PacketInfo *info) {
      */
     return protocol_filter_matches(config, info) &&
            port_filter_matches(config, info) &&
-           host_filter_matches(config, info);
+           host_filter_matches(config, info) &&
+           payload_text_filter_matches(config, info) &&
+           payload_hex_filter_matches(config, info);
 }

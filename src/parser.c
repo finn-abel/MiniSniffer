@@ -13,6 +13,7 @@
 #define IPV4_PROTOCOL_UDP 17
 #define TCP_MIN_HEADER_LEN 20
 #define UDP_HEADER_LEN 8
+#define ICMP_HEADER_LEN 8
 
 /*
  * Reads a two-byte network-order integer without assuming packet alignment.
@@ -83,6 +84,97 @@ static void parse_udp_ports(
     info->src_port = read_u16_network(udp_header);
     info->dst_port = read_u16_network(udp_header + 2);
     info->has_ports = 1;
+}
+
+static void parse_payload_preview(
+    const unsigned char *packet,
+    size_t packet_len,
+    size_t payload_offset,
+    PacketInfo *info
+) {
+    size_t available;
+
+    if (packet_len <= payload_offset) {
+        return;
+    }
+
+    /*
+     * payload_length records how much captured data remains after headers.
+     * payload_preview stores only the bounded prefix used by display/logging
+     * and payload filters.
+     */
+    available = packet_len - payload_offset;
+    info->has_payload = available > 0;
+    info->payload_length = available;
+    info->payload_preview_length = available;
+    if (info->payload_preview_length > PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES) {
+        info->payload_preview_length = PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES;
+    }
+
+    memcpy(info->payload_preview, packet + payload_offset, info->payload_preview_length);
+}
+
+/*
+ * TCP has a variable-length header.
+ * The data offset field in byte 12 tells us where payload bytes begin.
+ */
+static void parse_tcp_payload(
+    const unsigned char *packet,
+    size_t packet_len,
+    size_t tcp_offset,
+    PacketInfo *info
+) {
+    const unsigned char *tcp_header;
+    size_t tcp_header_len;
+
+    if (packet_len < tcp_offset + TCP_MIN_HEADER_LEN) {
+        return;
+    }
+
+    tcp_header = packet + tcp_offset;
+    /* TCP data offset is stored in 32-bit words in the high nibble. */
+    tcp_header_len = (size_t)(tcp_header[12] >> 4) * 4;
+    if (tcp_header_len < TCP_MIN_HEADER_LEN) {
+        return;
+    }
+    if (packet_len < tcp_offset + tcp_header_len) {
+        return;
+    }
+
+    parse_payload_preview(packet, packet_len, tcp_offset + tcp_header_len, info);
+}
+
+/*
+ * UDP has a fixed eight-byte header, so payload begins immediately after it.
+ */
+static void parse_udp_payload(
+    const unsigned char *packet,
+    size_t packet_len,
+    size_t udp_offset,
+    PacketInfo *info
+) {
+    if (packet_len < udp_offset + UDP_HEADER_LEN) {
+        return;
+    }
+
+    parse_payload_preview(packet, packet_len, udp_offset + UDP_HEADER_LEN, info);
+}
+
+/*
+ * ICMP's common header is eight bytes for the packet types PacketScope displays.
+ * Anything captured after that is treated as ICMP payload preview data.
+ */
+static void parse_icmp_payload(
+    const unsigned char *packet,
+    size_t packet_len,
+    size_t icmp_offset,
+    PacketInfo *info
+) {
+    if (packet_len < icmp_offset + ICMP_HEADER_LEN) {
+        return;
+    }
+
+    parse_payload_preview(packet, packet_len, icmp_offset + ICMP_HEADER_LEN, info);
 }
 
 /*
@@ -173,15 +265,19 @@ int parser_parse_packet(
     /*
      * Transport metadata starts after the variable-length IPv4 header.
      * ICMP has no ports, while TCP and UDP expose source and destination ports.
+     * Payload previews are derived from each transport header's own length.
      */
     set_ipv4_protocol(ip_header[9], info);
     clear_transport_ports(info);
     if (info->protocol == PROTO_TCP) {
         parse_tcp_ports(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_tcp_payload(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
     } else if (info->protocol == PROTO_UDP) {
         parse_udp_ports(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_udp_payload(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
     } else if (info->protocol == PROTO_ICMP) {
         clear_transport_ports(info);
+        parse_icmp_payload(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
     }
 
     return 0;

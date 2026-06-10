@@ -50,6 +50,19 @@ static void test_config_defaults_logging(void) {
     assert(strcmp(config.log_path, "") == 0);
 }
 
+static void test_config_defaults_payload_options(void) {
+    AppConfig config;
+
+    config_init_defaults(&config);
+
+    assert(config.payload_display_enabled == 0);
+    assert(config.payload_preview_bytes == PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES);
+    assert(config.filter_payload_text_enabled == 0);
+    assert(config.filter_payload_text_length == 0);
+    assert(config.filter_payload_hex_enabled == 0);
+    assert(config.filter_payload_hex_length == 0);
+}
+
 static void test_config_init_defaults_rejects_null_input(void) {
     config_init_defaults(NULL);
 }
@@ -60,6 +73,7 @@ int main(void) {
     test_config_defaults_port_filter();
     test_config_defaults_host_filter();
     test_config_defaults_logging();
+    test_config_defaults_payload_options();
     test_config_init_defaults_rejects_null_input();
 
     printf("All config tests passed.\n");

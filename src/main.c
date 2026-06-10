@@ -35,6 +35,9 @@ int main(int argc, char **argv) {
 
     stats_init(&stats);
 
+    logger_set_payload_logging(config.payload_display_enabled,
+                               config.payload_preview_bytes);
+
     if (config.logging_enabled != 0 && logger_open(config.log_path) != 0) {
         return 1;
     }
@@ -57,6 +60,15 @@ int main(int argc, char **argv) {
     }
     if (config.filter_host_enabled != 0) {
         printf("Host filter: %s\n", config.filter_host);
+    }
+    if (config.filter_payload_text_enabled != 0) {
+        printf("Payload text filter: %zu bytes\n", config.filter_payload_text_length);
+    }
+    if (config.filter_payload_hex_enabled != 0) {
+        printf("Payload hex filter: %zu bytes\n", config.filter_payload_hex_length);
+    }
+    if (config.payload_display_enabled != 0) {
+        printf("Payload preview: %zu bytes\n", config.payload_preview_bytes);
     }
     if (config.logging_enabled != 0) {
         printf("Log file: %s\n", config.log_path);

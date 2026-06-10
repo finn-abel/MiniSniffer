@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -13,7 +14,9 @@ static void print_usage(FILE *stream, const char *program_name) {
     /* Keep usage text in one place so errors and --help stay consistent. */
     fprintf(stream, "Usage: %s [--help] [--interface <name>] [--count <number>]\n", name);
     fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
-    fprintf(stream, "       [--host <ipv4>] [--log <file>] [--stats]\n");
+    fprintf(stream, "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n");
+    fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
+    fprintf(stream, "       [--stats]\n");
 }
 
 void cli_print_usage(const char *program_name) {
@@ -95,6 +98,106 @@ static int fail_invalid_host(const char *program_name) {
     fprintf(stderr, "Error: host must be a valid IPv4 address.\n");
     print_usage(stderr, program_name);
     return 1;
+}
+
+static int fail_invalid_payload_bytes(const char *program_name) {
+    fprintf(stderr,
+            "Error: payload byte preview must be between 1 and %u.\n",
+            (unsigned int)PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
+static int fail_invalid_payload_text(const char *program_name) {
+    fprintf(stderr,
+            "Error: payload text filter must be between 1 and %u bytes.\n",
+            (unsigned int)PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
+static int fail_invalid_payload_hex(const char *program_name) {
+    fprintf(stderr,
+            "Error: payload hex filter must contain 1 to %u bytes of hex.\n",
+            (unsigned int)PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
+/*
+ * Convert one hexadecimal character into its numeric nibble value.
+ * The payload hex parser accepts both upper and lower case input.
+ */
+static int hex_value(char value) {
+    if (value >= '0' && value <= '9') {
+        return value - '0';
+    }
+    if (value >= 'a' && value <= 'f') {
+        return value - 'a' + 10;
+    }
+    if (value >= 'A' && value <= 'F') {
+        return value - 'A' + 10;
+    }
+
+    return -1;
+}
+
+/*
+ * Parse CLI hex patterns into raw bytes for binary-safe payload matching.
+ * Separators are accepted for readability, so "47 45 54", "47:45:54",
+ * and "47-45-54" all produce the same three bytes.
+ */
+static int parse_payload_hex_pattern(
+    const char *text,
+    unsigned char *bytes,
+    size_t *byte_count
+) {
+    int high_nibble = -1;
+    size_t count = 0;
+
+    if (text == NULL || bytes == NULL || byte_count == NULL || text[0] == '\0') {
+        return 1;
+    }
+
+    while (*text != '\0') {
+        int value;
+
+        /*
+         * Ignore separators between bytes. They are not allowed to split a
+         * single nibble from its pair because odd nibble counts fail below.
+         */
+        if (isspace((unsigned char)*text) || *text == ':' || *text == '-') {
+            text++;
+            continue;
+        }
+
+        value = hex_value(*text);
+        if (value < 0) {
+            return 1;
+        }
+
+        if (high_nibble < 0) {
+            /* Store the first nibble until the second nibble completes a byte. */
+            high_nibble = value;
+        } else {
+            if (count >= PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES) {
+                return 1;
+            }
+            bytes[count] = (unsigned char)((high_nibble << 4) | value);
+            count++;
+            high_nibble = -1;
+        }
+
+        text++;
+    }
+
+    if (high_nibble >= 0 || count == 0) {
+        /* Reject odd numbers of hex digits and separator-only strings. */
+        return 1;
+    }
+
+    *byte_count = count;
+    return 0;
 }
 
 int cli_parse_args(int argc, char **argv, AppConfig *config) {
@@ -180,6 +283,56 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
                 return fail_with_error(program_name, "log path is too long.");
             }
             config->logging_enabled = 1;
+            i++;
+        } else if (strcmp(argv[i], "--payload") == 0) {
+            /* Display is independent from filtering; filters can run silently. */
+            config->payload_display_enabled = 1;
+        } else if (strcmp(argv[i], "--payload-bytes") == 0) {
+            int preview_bytes;
+
+            /*
+             * Keep previews bounded so printing/logging cannot dump arbitrarily
+             * large packet bodies.
+             */
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--payload-bytes requires a value.");
+            }
+            if (parse_positive_int(argv[i + 1], &preview_bytes) != 0 ||
+                preview_bytes > PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES) {
+                return fail_invalid_payload_bytes(program_name);
+            }
+            config->payload_preview_bytes = (size_t)preview_bytes;
+            i++;
+        } else if (strcmp(argv[i], "--payload-contains") == 0) {
+            size_t length;
+
+            /*
+             * Store the text as bytes, not as a C string. Payloads can be
+             * binary, so later matching uses explicit lengths.
+             */
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--payload-contains requires a value.");
+            }
+
+            length = strlen(argv[i + 1]);
+            if (length == 0 || length > PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES) {
+                return fail_invalid_payload_text(program_name);
+            }
+            memcpy(config->filter_payload_text, argv[i + 1], length);
+            config->filter_payload_text_length = length;
+            config->filter_payload_text_enabled = 1;
+            i++;
+        } else if (strcmp(argv[i], "--payload-hex") == 0) {
+            /* Hex filters let users match binary payload signatures directly. */
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--payload-hex requires a value.");
+            }
+            if (parse_payload_hex_pattern(argv[i + 1],
+                                          config->filter_payload_hex,
+                                          &config->filter_payload_hex_length) != 0) {
+                return fail_invalid_payload_hex(program_name);
+            }
+            config->filter_payload_hex_enabled = 1;
             i++;
         } else if (strcmp(argv[i], "--stats") == 0) {
             /* Boolean options toggle config state without consuming a value. */

@@ -20,6 +20,12 @@ void config_init_defaults(AppConfig *config) {
     config->filter_port = 0;
     config->filter_host_enabled = 0;
     config->filter_host[0] = '\0';
+    config->filter_payload_text_enabled = 0;
+    config->filter_payload_text_length = 0;
+    config->filter_payload_hex_enabled = 0;
+    config->filter_payload_hex_length = 0;
+    config->payload_display_enabled = 0;
+    config->payload_preview_bytes = PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES;
     config->logging_enabled = 0;
     config->log_path[0] = '\0';
 }

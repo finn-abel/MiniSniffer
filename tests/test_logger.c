@@ -35,6 +35,17 @@ static PacketInfo make_icmp_packet(void) {
     return info;
 }
 
+static PacketInfo make_payload_packet(void) {
+    PacketInfo info = make_tcp_packet();
+
+    info.payload_length = 5;
+    info.payload_preview_length = 5;
+    info.has_payload = 1;
+    memcpy(info.payload_preview, "GET /", 5);
+
+    return info;
+}
+
 static void test_logger_open_rejects_invalid_path(void) {
     assert(logger_open(NULL) != 0);
     assert(logger_open("") != 0);
@@ -67,6 +78,32 @@ static void test_logger_writes_header_and_rows(void) {
     remove(TEST_LOG_PATH);
 }
 
+static void test_logger_writes_payload_columns_when_enabled(void) {
+    FILE *file;
+    char line[512];
+    PacketInfo info = make_payload_packet();
+
+    logger_set_payload_logging(1, 5);
+    assert(logger_open(TEST_LOG_PATH) == 0);
+    logger_write(&info);
+    logger_close();
+    logger_set_payload_logging(0, 0);
+
+    file = fopen(TEST_LOG_PATH, "r");
+    assert(file != NULL);
+
+    assert(fgets(line, sizeof(line), file) != NULL);
+    assert(strcmp(line,
+                  "packet_number,protocol,src_ip,src_port,dst_ip,dst_port,size,payload_length,payload_hex,payload_ascii\n") == 0);
+
+    assert(fgets(line, sizeof(line), file) != NULL);
+    assert(strcmp(line,
+                  "1,TCP,192.168.1.25,51432,142.250.190.14,443,1280,5,\"47 45 54 20 2f\",\"GET /\"\n") == 0);
+
+    fclose(file);
+    remove(TEST_LOG_PATH);
+}
+
 static void test_logger_write_ignores_null_info(void) {
     assert(logger_open(TEST_LOG_PATH) == 0);
     logger_write(NULL);
@@ -77,6 +114,7 @@ static void test_logger_write_ignores_null_info(void) {
 int main(void) {
     test_logger_open_rejects_invalid_path();
     test_logger_writes_header_and_rows();
+    test_logger_writes_payload_columns_when_enabled();
     test_logger_write_ignores_null_info();
 
     printf("All logger tests passed.\n");

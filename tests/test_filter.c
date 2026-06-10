@@ -111,6 +111,48 @@ static void test_filter_packet_requires_all_enabled_filters(void) {
     assert(filter_packet_matches(&config, &info) == 0);
 }
 
+static void test_filter_packet_matches_payload_text(void) {
+    AppConfig config;
+    PacketInfo info = make_tcp_packet();
+
+    config_init_defaults(&config);
+    info.has_payload = 1;
+    info.payload_preview_length = 9;
+    memcpy(info.payload_preview, "GET /test", 9);
+
+    config.filter_payload_text_enabled = 1;
+    memcpy(config.filter_payload_text, "GET ", 4);
+    config.filter_payload_text_length = 4;
+    assert(filter_packet_matches(&config, &info) == 1);
+
+    memcpy(config.filter_payload_text, "POST", 4);
+    config.filter_payload_text_length = 4;
+    assert(filter_packet_matches(&config, &info) == 0);
+}
+
+static void test_filter_packet_matches_payload_hex(void) {
+    AppConfig config;
+    PacketInfo info = make_tcp_packet();
+
+    config_init_defaults(&config);
+    info.has_payload = 1;
+    info.payload_preview_length = 4;
+    info.payload_preview[0] = 0xde;
+    info.payload_preview[1] = 0xad;
+    info.payload_preview[2] = 0xbe;
+    info.payload_preview[3] = 0xef;
+
+    config.filter_payload_hex_enabled = 1;
+    config.filter_payload_hex[0] = 0xad;
+    config.filter_payload_hex[1] = 0xbe;
+    config.filter_payload_hex_length = 2;
+    assert(filter_packet_matches(&config, &info) == 1);
+
+    config.filter_payload_hex[0] = 0xba;
+    config.filter_payload_hex[1] = 0xad;
+    assert(filter_packet_matches(&config, &info) == 0);
+}
+
 static void test_filter_packet_rejects_null_inputs(void) {
     AppConfig config;
     PacketInfo info = make_tcp_packet();
@@ -128,6 +170,8 @@ int main(void) {
     test_filter_packet_rejects_port_filter_when_packet_has_no_ports();
     test_filter_packet_matches_host();
     test_filter_packet_requires_all_enabled_filters();
+    test_filter_packet_matches_payload_text();
+    test_filter_packet_matches_payload_hex();
     test_filter_packet_rejects_null_inputs();
 
     printf("All filter tests passed.\n");
