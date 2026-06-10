@@ -124,6 +124,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             config->filter_port = (uint16_t)port;
             i++;
         } else if (strcmp(argv[i], "--host") == 0) {
+            /* copy_arg enforces the AppConfig char[16] IPv4 host buffer limit. */
             if (!has_value(argc, argv, i) ||
                 copy_arg(config->filter_host,
                          sizeof(config->filter_host),

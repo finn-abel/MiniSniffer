@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "capture.h"
+#include "filter.h"
 #include "parser.h"
 
 #define CAPTURE_SNAPLEN 65535
@@ -90,6 +91,9 @@ int capture_start(const AppConfig *config) {
             fprintf(stderr, "Packet parsing failed.\n");
             pcap_close(handle);
             return 1;
+        }
+        if (!filter_packet_matches(config, &info)) {
+            continue;
         }
 
         captured_packets++;
