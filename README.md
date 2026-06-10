@@ -28,6 +28,8 @@ sudo ./PacketScope --protocol tcp --count 20 --stats
 ```
 
 `--count` counts displayed packets after filters are applied.
+Press Ctrl+C to stop an unlimited capture cleanly. PacketScope will close the
+CSV log and print stats when `--stats` is enabled.
 
 ## Filters
 
@@ -66,3 +68,18 @@ Use `--stats` to print displayed packet totals after capture completes.
 
 The stats summary includes total displayed packets, TCP/UDP/ICMP/OTHER counts,
 total bytes, and average packet size.
+
+## Error Handling
+
+PacketScope prints specific errors for common invalid inputs:
+
+```sh
+./PacketScope --port
+./PacketScope --port abc
+./PacketScope --protocol fake
+./PacketScope --interface fake0
+./PacketScope --log /bad/path/file.csv
+```
+
+Capture errors include the interface name and libpcap error. Permission errors
+will suggest using sudo or adjusting capture permissions.

@@ -33,6 +33,12 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    stats_init(&stats);
+
+    if (config.logging_enabled != 0 && logger_open(config.log_path) != 0) {
+        return 1;
+    }
+
     printf("PacketScope starting...\n");
     printf("Interface: %s\n",
            config.interface_name[0] == '\0' ? "default" : config.interface_name);
@@ -54,13 +60,6 @@ int main(int argc, char **argv) {
     }
     if (config.logging_enabled != 0) {
         printf("Log file: %s\n", config.log_path);
-    }
-
-    stats_init(&stats);
-
-    if (config.logging_enabled != 0 && logger_open(config.log_path) != 0) {
-        fprintf(stderr, "Unable to open log file: %s\n", config.log_path);
-        return 1;
     }
 
     capture_result = capture_start(&config, &stats);

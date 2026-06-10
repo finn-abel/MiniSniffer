@@ -6,13 +6,17 @@
 
 #include "cli.h"
 
-void cli_print_usage(const char *program_name) {
+static void print_usage(FILE *stream, const char *program_name) {
     const char *name = program_name == NULL ? "PacketScope" : program_name;
 
     /* Keep usage text in one place so errors and --help stay consistent. */
-    printf("Usage: %s [--help] [--interface <name>] [--count <number>]\n", name);
-    printf("       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
-    printf("       [--host <ipv4>] [--log <file>] [--stats]\n");
+    fprintf(stream, "Usage: %s [--help] [--interface <name>] [--count <number>]\n", name);
+    fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
+    fprintf(stream, "       [--host <ipv4>] [--log <file>] [--stats]\n");
+}
+
+void cli_print_usage(const char *program_name) {
+    print_usage(stdout, program_name);
 }
 
 /*
@@ -66,10 +70,23 @@ static int copy_arg(char *destination, size_t destination_size, const char *valu
 }
 
 /*
- * All parse failures report the same usage text and return a non-zero status.
+ * All parse failures report a specific error, then show usage for recovery.
  */
-static int fail_with_usage(const char *program_name) {
-    cli_print_usage(program_name);
+static int fail_with_error(const char *program_name, const char *message) {
+    fprintf(stderr, "Error: %s\n", message);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
+static int fail_invalid_protocol(const char *program_name, const char *value) {
+    fprintf(stderr, "Error: invalid protocol: %s.\n", value);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
+static int fail_invalid_port(const char *program_name) {
+    fprintf(stderr, "Error: port must be between 1 and 65535.\n");
+    print_usage(stderr, program_name);
     return 1;
 }
 
@@ -78,7 +95,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
     int i;
 
     if (config == NULL) {
-        return fail_with_usage(program_name);
+        return fail_with_error(program_name, "internal configuration is unavailable.");
     }
 
     /* Parse only metadata-oriented options; capture behavior is added later. */
@@ -91,23 +108,29 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
 
         /* Value options update AppConfig and advance past their argument. */
         if (strcmp(argv[i], "--interface") == 0) {
-            if (!has_value(argc, argv, i) ||
-                copy_arg(config->interface_name,
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--interface requires a value.");
+            }
+            if (copy_arg(config->interface_name,
                          sizeof(config->interface_name),
                          argv[i + 1]) != 0) {
-                return fail_with_usage(program_name);
+                return fail_with_error(program_name, "interface name is too long.");
             }
             i++;
         } else if (strcmp(argv[i], "--count") == 0) {
-            if (!has_value(argc, argv, i) ||
-                parse_positive_int(argv[i + 1], &config->max_packets) != 0) {
-                return fail_with_usage(program_name);
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--count requires a value.");
+            }
+            if (parse_positive_int(argv[i + 1], &config->max_packets) != 0) {
+                return fail_with_error(program_name, "count must be a positive integer.");
             }
             i++;
         } else if (strcmp(argv[i], "--protocol") == 0) {
-            if (!has_value(argc, argv, i) ||
-                protocol_from_string(argv[i + 1], &config->filter_protocol) != 0) {
-                return fail_with_usage(program_name);
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--protocol requires a value.");
+            }
+            if (protocol_from_string(argv[i + 1], &config->filter_protocol) != 0) {
+                return fail_invalid_protocol(program_name, argv[i + 1]);
             }
             config->filter_protocol_enabled = 1;
             i++;
@@ -115,30 +138,35 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             int port;
 
             /* AppConfig stores ports as uint16_t, so reject values above 65535. */
-            if (!has_value(argc, argv, i) ||
-                parse_positive_int(argv[i + 1], &port) != 0 ||
-                port > 65535) {
-                return fail_with_usage(program_name);
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--port requires a value.");
+            }
+            if (parse_positive_int(argv[i + 1], &port) != 0 || port > 65535) {
+                return fail_invalid_port(program_name);
             }
             config->filter_port_enabled = 1;
             config->filter_port = (uint16_t)port;
             i++;
         } else if (strcmp(argv[i], "--host") == 0) {
             /* copy_arg enforces the AppConfig char[16] IPv4 host buffer limit. */
-            if (!has_value(argc, argv, i) ||
-                copy_arg(config->filter_host,
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--host requires a value.");
+            }
+            if (copy_arg(config->filter_host,
                          sizeof(config->filter_host),
                          argv[i + 1]) != 0) {
-                return fail_with_usage(program_name);
+                return fail_with_error(program_name, "host must fit in an IPv4 string buffer.");
             }
             config->filter_host_enabled = 1;
             i++;
         } else if (strcmp(argv[i], "--log") == 0) {
-            if (!has_value(argc, argv, i) ||
-                copy_arg(config->log_path,
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--log requires a file path.");
+            }
+            if (copy_arg(config->log_path,
                          sizeof(config->log_path),
                          argv[i + 1]) != 0) {
-                return fail_with_usage(program_name);
+                return fail_with_error(program_name, "log path is too long.");
             }
             config->logging_enabled = 1;
             i++;
@@ -146,7 +174,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             /* Boolean options toggle config state without consuming a value. */
             config->stats_mode = 1;
         } else {
-            return fail_with_usage(program_name);
+            return fail_with_error(program_name, "unknown option.");
         }
     }
 
