@@ -103,6 +103,8 @@ typedef struct {
     size_t payload_decode_length;
     size_t payload_preview_length;
     unsigned char payload_preview[PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES];
+
+    AppInfo app;
 } PacketInfo;
 
 /*

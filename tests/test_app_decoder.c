@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app_decoder.h"
+#include "fixtures/app_fixtures.h"
 
 static PacketInfo make_payload_packet(
     Protocol protocol,
@@ -29,59 +30,32 @@ static PacketInfo make_payload_packet(
     return packet;
 }
 
-static size_t build_minimal_client_hello(uint8_t *buffer) {
-    size_t offset = 0;
-    size_t i;
-
-    buffer[offset++] = 0x16;
-    buffer[offset++] = 0x03;
-    buffer[offset++] = 0x03;
-    buffer[offset++] = 0x00;
-    buffer[offset++] = 0x2d;
-    buffer[offset++] = 0x01;
-    buffer[offset++] = 0x00;
-    buffer[offset++] = 0x00;
-    buffer[offset++] = 0x29;
-    buffer[offset++] = 0x03;
-    buffer[offset++] = 0x03;
-    for (i = 0; i < 32; i++) {
-        buffer[offset++] = 0x00;
-    }
-    buffer[offset++] = 0x00;
-    buffer[offset++] = 0x00;
-    buffer[offset++] = 0x02;
-    buffer[offset++] = 0x13;
-    buffer[offset++] = 0x01;
-    buffer[offset++] = 0x01;
-    buffer[offset++] = 0x00;
-
-    return offset;
-}
-
 static void test_app_decode_buffer_detects_http(void) {
-    const uint8_t payload[] = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
     AppInfo info;
 
-    assert(app_decode_buffer(APP_PROTO_UNKNOWN, payload, sizeof(payload) - 1, &info) ==
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN,
+                             HTTP_GET_WITH_HOST,
+                             sizeof(HTTP_GET_WITH_HOST) - 1,
+                             &info) ==
            APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_HTTP);
     assert(strcmp(info.http_method, "GET") == 0);
 }
 
 static void test_app_decode_buffer_reports_tls_need_more(void) {
-    const uint8_t payload[] = {0x16, 0x03, 0x03};
     AppInfo info;
 
-    assert(app_decode_buffer(APP_PROTO_UNKNOWN, payload, sizeof(payload), &info) ==
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN, TLS_TRUNCATED, sizeof(TLS_TRUNCATED), &info) ==
            APP_DECODE_NEED_MORE);
 }
 
 static void test_app_decode_buffer_detects_tls(void) {
-    uint8_t payload[64];
-    size_t length = build_minimal_client_hello(payload);
     AppInfo info;
 
-    assert(app_decode_buffer(APP_PROTO_UNKNOWN, payload, length, &info) ==
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN,
+                             TLS_CLIENT_HELLO_SNI_ALPN,
+                             sizeof(TLS_CLIENT_HELLO_SNI_ALPN),
+                             &info) ==
            APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_TLS);
     assert(info.tls_handshake_type == 0x01);
@@ -95,27 +69,47 @@ static void test_app_decode_buffer_reports_preferred_empty_need_more(void) {
 }
 
 static void test_app_decode_packet_uses_ports_for_dns(void) {
-    const uint8_t payload[] = {
-        0x12, 0x34, 0x01, 0x00,
-        0x00, 0x01, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
-        0x03, 'c', 'o', 'm',
-        0x00,
-        0x00, 0x01,
-        0x00, 0x01
-    };
-    PacketInfo packet = make_payload_packet(PROTO_UDP, 54000, 53, payload, sizeof(payload));
+    PacketInfo packet = make_payload_packet(PROTO_UDP, 54000, 53, DNS_A_QUERY, sizeof(DNS_A_QUERY));
     AppInfo info;
 
     assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_DNS);
-    assert(strcmp(info.dns_query_name, "example.com") == 0);
+    assert(strcmp(info.dns_query_name, "www.example.com") == 0);
+}
+
+static void test_app_decode_packet_can_write_packet_app(void) {
+    PacketInfo packet = make_payload_packet(PROTO_TCP,
+                                            50000,
+                                            80,
+                                            HTTP_GET_WITH_HOST,
+                                            sizeof(HTTP_GET_WITH_HOST) - 1);
+
+    assert(app_decode_packet(&packet, &packet.app) == APP_DECODE_OK);
+    assert(packet.app.protocol == APP_PROTO_HTTP);
+    assert(strcmp(packet.app.http_host, "example.com") == 0);
+}
+
+static void test_app_decode_packet_uses_tcp_dns_frame(void) {
+    uint8_t frame[sizeof(DNS_A_QUERY) + 2];
+    PacketInfo packet;
+    AppInfo info;
+
+    frame[0] = 0x00;
+    frame[1] = (uint8_t)sizeof(DNS_A_QUERY);
+    memcpy(frame + 2, DNS_A_QUERY, sizeof(DNS_A_QUERY));
+    packet = make_payload_packet(PROTO_TCP, 50000, 53, frame, sizeof(frame));
+
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_DNS);
+    assert(strcmp(info.dns_query_name, "www.example.com") == 0);
 }
 
 static void test_app_decode_packet_reports_preferred_malformed(void) {
-    const uint8_t payload[] = "not http";
-    PacketInfo packet = make_payload_packet(PROTO_TCP, 50000, 80, payload, sizeof(payload) - 1);
+    PacketInfo packet = make_payload_packet(PROTO_TCP,
+                                            50000,
+                                            80,
+                                            HTTP_NO_MATCH,
+                                            sizeof(HTTP_NO_MATCH) - 1);
     AppInfo info;
 
     assert(app_decode_packet(&packet, &info) == APP_DECODE_MALFORMED);
@@ -128,14 +122,26 @@ static void test_app_decode_packet_rejects_empty_payload(void) {
     assert(app_decode_packet(NULL, &info) == APP_DECODE_NO_MATCH);
 }
 
+static void test_app_decode_buffer_reports_malformed(void) {
+    AppInfo info;
+
+    assert(app_decode_buffer(APP_PROTO_HTTP,
+                             HTTP_MALFORMED,
+                             sizeof(HTTP_MALFORMED) - 1,
+                             &info) == APP_DECODE_MALFORMED);
+}
+
 int main(void) {
     test_app_decode_buffer_detects_http();
     test_app_decode_buffer_reports_tls_need_more();
     test_app_decode_buffer_detects_tls();
     test_app_decode_buffer_reports_preferred_empty_need_more();
     test_app_decode_packet_uses_ports_for_dns();
+    test_app_decode_packet_can_write_packet_app();
+    test_app_decode_packet_uses_tcp_dns_frame();
     test_app_decode_packet_reports_preferred_malformed();
     test_app_decode_packet_rejects_empty_payload();
+    test_app_decode_buffer_reports_malformed();
 
     printf("All app decoder tests passed.\n");
 

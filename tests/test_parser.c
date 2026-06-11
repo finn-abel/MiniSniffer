@@ -14,6 +14,7 @@ static void test_parser_parse_packet_initializes_basic_info(void) {
     assert(strcmp(info.src_ip, "") == 0);
     assert(strcmp(info.dst_ip, "") == 0);
     assert(info.has_ports == 0);
+    assert(info.app.protocol == APP_PROTO_UNKNOWN);
 }
 
 static void test_parser_parse_packet_marks_short_frame_as_other(void) {

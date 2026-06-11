@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "app_http.h"
 #include "csv_logger.h"
+#include "fixtures/app_fixtures.h"
 
 #define TEST_CSV_LOG_PATH "/tmp/packetscope_test_csv_logger.csv"
 
@@ -25,11 +27,9 @@ static PacketInfo make_packet(void) {
 static AppInfo make_http_app(void) {
     AppInfo app;
 
-    memset(&app, 0, sizeof(app));
-    app.protocol = APP_PROTO_HTTP;
-    snprintf(app.http_method, sizeof(app.http_method), "GET");
-    snprintf(app.http_host, sizeof(app.http_host), "example.com");
-    snprintf(app.http_path, sizeof(app.http_path), "/");
+    assert(app_http_decode(HTTP_GET_WITH_HOST,
+                           sizeof(HTTP_GET_WITH_HOST) - 1,
+                           &app) == APP_DECODE_OK);
 
     return app;
 }
@@ -53,7 +53,7 @@ static void test_csv_logger_writes_app_schema(void) {
 
     assert(fgets(line, sizeof(line), file) != NULL);
     assert(strcmp(line,
-                  "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,http,\"GET\",\"example.com\",\"/\",,\"\",,,0,\"\",\"\",,,\"packet\"\n") == 0);
+                  "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,http,\"GET\",\"example.com\",\"/index.html\",,\"\",,,0,\"\",\"\",,,\"packet\"\n") == 0);
 
     fclose(file);
     remove(TEST_CSV_LOG_PATH);

@@ -2,7 +2,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "app_http.h"
+#include "app_tls.h"
 #include "filters.h"
+#include "fixtures/app_fixtures.h"
 
 static PacketInfo make_packet(void) {
     PacketInfo packet;
@@ -21,11 +24,9 @@ static PacketInfo make_packet(void) {
 static AppInfo make_http_app(void) {
     AppInfo app;
 
-    memset(&app, 0, sizeof(app));
-    app.protocol = APP_PROTO_HTTP;
-    snprintf(app.http_method, sizeof(app.http_method), "GET");
-    snprintf(app.http_host, sizeof(app.http_host), "example.com");
-    snprintf(app.http_path, sizeof(app.http_path), "/");
+    assert(app_http_decode(HTTP_GET_WITH_HOST,
+                           sizeof(HTTP_GET_WITH_HOST) - 1,
+                           &app) == APP_DECODE_OK);
 
     return app;
 }
@@ -33,10 +34,9 @@ static AppInfo make_http_app(void) {
 static AppInfo make_tls_app(void) {
     AppInfo app;
 
-    memset(&app, 0, sizeof(app));
-    app.protocol = APP_PROTO_TLS;
-    snprintf(app.tls_sni, sizeof(app.tls_sni), "example.com");
-    snprintf(app.tls_alpn, sizeof(app.tls_alpn), "h2,http/1.1");
+    assert(app_tls_decode_client_hello(TLS_CLIENT_HELLO_SNI_ALPN,
+                                       sizeof(TLS_CLIENT_HELLO_SNI_ALPN),
+                                       &app) == APP_DECODE_OK);
 
     return app;
 }

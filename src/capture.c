@@ -261,7 +261,6 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         struct pcap_pkthdr *header = NULL;
         const unsigned char *packet = NULL;
         PacketInfo info;
-        AppInfo packet_app;
         AppInfo *packet_app_ptr = NULL;
         FilterContext filter_context;
         const char *app_source = "none";
@@ -291,13 +290,11 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         }
         set_packet_timestamp(&info, header);
 
-        memset(&packet_app, 0, sizeof(packet_app));
-        packet_app.protocol = APP_PROTO_UNKNOWN;
         if (config->decode_app) {
-            AppDecodeResult decode_result = app_decode_packet(&info, &packet_app);
+            AppDecodeResult decode_result = app_decode_packet(&info, &info.app);
 
-            if (decode_result == APP_DECODE_OK && packet_app.protocol != APP_PROTO_UNKNOWN) {
-                packet_app_ptr = &packet_app;
+            if (decode_result == APP_DECODE_OK && info.app.protocol != APP_PROTO_UNKNOWN) {
+                packet_app_ptr = &info.app;
                 app_source = "packet";
             }
         }

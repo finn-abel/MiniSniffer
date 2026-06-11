@@ -14,6 +14,8 @@ and can report capture statistics when the run completes.
 - Protocol, port, and host filters
 - Bounded packet payload inspection
 - Literal text and hex payload filters
+- Packet-local HTTP, DNS, and TLS ClientHello metadata decoding
+- Application metadata filters
 - CSV logging for displayed packets
 - Summary statistics for displayed packets
 - Clean Ctrl+C shutdown for unlimited captures
@@ -81,6 +83,9 @@ Usage: ./PacketScope [--help] [--interface <name>] [--count <number>]
        [--protocol <tcp|udp|icmp|other>] [--port <number>]
        [--host <ipv4>] [--payload] [--payload-bytes <number>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
+       [--decode-app] [--app <http|dns|tls>] [--http-host <host>]
+       [--http-method <method>] [--dns-query <name>] [--dns-type <type>]
+       [--tls-sni <host>] [--tls-alpn <protocol>]
        [--stats]
 ```
 
@@ -98,6 +103,14 @@ Usage: ./PacketScope [--help] [--interface <name>] [--count <number>]
 | `--payload-bytes <number>` | Set the payload preview length. Default is 256 bytes. Maximum is 256 bytes. |
 | `--payload-contains <text>` | Display only packets whose bounded payload decode window contains the literal text. |
 | `--payload-hex <hex>` | Display only packets whose bounded payload decode window contains the byte pattern. |
+| `--decode-app` | Decode packet-local HTTP, DNS, and TLS ClientHello metadata. |
+| `--app <http|dns|tls>` | Display only packets with decoded app metadata for the selected protocol. Requires `--decode-app`. |
+| `--http-host <host>` | Display only decoded HTTP packets with a matching Host header. Requires `--decode-app`. |
+| `--http-method <method>` | Display only decoded HTTP requests with a matching method. Requires `--decode-app`. |
+| `--dns-query <name>` | Display only decoded DNS packets with a matching first query name. Requires `--decode-app`. |
+| `--dns-type <type>` | Display only decoded DNS packets with a matching first query type, such as `A` or `AAAA`. Requires `--decode-app`. |
+| `--tls-sni <host>` | Display only decoded TLS ClientHello packets with a matching SNI hostname. Requires `--decode-app`. |
+| `--tls-alpn <protocol>` | Display only decoded TLS ClientHello packets advertising the ALPN protocol. Requires `--decode-app`. |
 | `--log <file>` | Write displayed packets to a CSV file. |
 | `--stats` | Print displayed packet totals after capture completes. |
 
@@ -157,6 +170,17 @@ sudo ./PacketScope --payload-hex "47 45 54 20"
 Hex patterns may include spaces, colons, or hyphens as separators. The example
 above matches the bytes for `GET `.
 
+Application filters use decoded packet-local metadata for now. If app metadata
+is absent or incomplete, app filters fail for that packet.
+
+Application filter examples:
+
+```sh
+sudo ./PacketScope --decode-app --app http --http-host example.com
+sudo ./PacketScope --decode-app --app dns --dns-query example.com --dns-type A
+sudo ./PacketScope --decode-app --app tls --tls-sni example.com --tls-alpn h2
+```
+
 ## Output
 
 PacketScope prints one line for each displayed packet. TCP and UDP packets
@@ -182,8 +206,29 @@ displayed packet:
       ascii: GET / HTTP/1.1...
 ```
 
+With `--decode-app`, decoded application metadata is printed below the packet
+summary when it is available:
+
+```text
+[004] TCP  192.168.1.25:51432 -> 93.184.216.34:80 size=512
+      app: http method=GET host=example.com path=/
+```
+
 Packets that cannot be parsed as Ethernet/IPv4 are displayed as `OTHER` when
 they pass the active filters.
+
+## Application Decoding Limits
+
+Application decoding is packet-local in the current build:
+
+- HTTP/1.x is decoded only when the complete header block is inside one packet.
+- UDP DNS is decoded packet-locally.
+- DNS over TCP is decoded only when the full two-byte length-prefixed DNS frame is inside one packet.
+- TLS is decoded only when the full ClientHello record is inside one packet.
+
+TCP stream reassembly is planned; incomplete app messages currently return an
+internal `APP_DECODE_NEED_MORE` result and are not displayed as decoded app
+metadata.
 
 ## CSV Logging
 
@@ -208,6 +253,15 @@ payload_length,payload_hex,payload_ascii
 ```
 
 Payload CSV values are bounded by `--payload-bytes`.
+
+When `--decode-app` is enabled, CSV logs use the stable application schema:
+
+```text
+timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source
+```
+
+`app_source` is `packet` for packet-local metadata, `flow` for future flow
+metadata, or `none` when no app metadata is available.
 
 ## Stats
 
