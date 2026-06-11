@@ -9,7 +9,7 @@ TARGET = PacketScope
 SRC = src/main.c src/config.c src/cli.c src/common.c src/capture.c src/parser.c src/filter.c src/filters.c src/flow.c src/stream_buffer.c src/tcp_reassembly.c src/logger.c src/csv_logger.c src/output.c src/stats.c src/app_decoder.c src/app_http.c src/app_dns.c src/app_tls.c src/byte_reader.c
 
 # Add test source files here.
-TEST_SRC = tests/test_config.c tests/test_cli.c tests/test_common.c tests/test_capture.c tests/test_parser.c tests/test_filter.c tests/test_filters.c tests/test_flow.c tests/test_stream_buffer.c tests/test_tcp_reassembly.c tests/test_logger.c tests/test_csv_logger.c tests/test_output.c tests/test_stats.c tests/test_app_decoder.c tests/test_app_http.c tests/test_app_dns.c tests/test_app_tls.c tests/test_byte_reader.c
+TEST_SRC = tests/test_config.c tests/test_cli.c tests/test_common.c tests/test_capture.c tests/test_parser.c tests/test_filter.c tests/test_filters.c tests/test_flow.c tests/test_stream_buffer.c tests/test_tcp_reassembly.c tests/test_flow_app_decode.c tests/test_flow_filters.c tests/test_logger.c tests/test_csv_logger.c tests/test_output.c tests/test_stats.c tests/test_app_decoder.c tests/test_app_http.c tests/test_app_dns.c tests/test_app_tls.c tests/test_byte_reader.c
 
 OBJ = $(SRC:.c=.o)
 

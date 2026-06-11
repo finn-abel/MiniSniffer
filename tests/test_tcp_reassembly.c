@@ -51,6 +51,22 @@ static void test_tcp_reassembly_buffers_simple_out_of_order_data(void) {
     tcp_reassembly_direction_cleanup(&state);
 }
 
+static void test_tcp_reassembly_records_gap_without_advancing_stream(void) {
+    TcpReassemblyDirection state;
+
+    assert(tcp_reassembly_direction_init(&state, 64));
+    assert(tcp_reassembly_process_segment(&state, 100, 0, (const uint8_t *)"ABC", 3) ==
+           TCP_REASSEMBLY_ACCEPTED);
+    assert(tcp_reassembly_process_segment(&state, 108, 0, (const uint8_t *)"XYZ", 3) ==
+           TCP_REASSEMBLY_BUFFERED);
+    assert(state.gaps == 1);
+    assert(state.out_of_order_segments == 1);
+    assert(state.next_sequence == 103);
+    assert(stream_buffer_length(&state.stream) == 3);
+    assert(memcmp(stream_buffer_data(&state.stream), "ABC", 3) == 0);
+    tcp_reassembly_direction_cleanup(&state);
+}
+
 static void test_tcp_reassembly_trims_overlap_predictably(void) {
     TcpReassemblyDirection state;
 
@@ -63,6 +79,30 @@ static void test_tcp_reassembly_trims_overlap_predictably(void) {
     assert(stream_buffer_length(&state.stream) == 7);
     assert(memcmp(stream_buffer_data(&state.stream), "ABCDEFG", 7) == 0);
     tcp_reassembly_direction_cleanup(&state);
+}
+
+static void test_tcp_reassembly_tracks_fin_and_rst(void) {
+    TcpReassemblyDirection fin_state;
+    TcpReassemblyDirection rst_state;
+
+    assert(tcp_reassembly_direction_init(&fin_state, 64));
+    assert(tcp_reassembly_process_segment(&fin_state,
+                                          100,
+                                          TCP_FLAG_FIN,
+                                          NULL,
+                                          0) == TCP_REASSEMBLY_ACCEPTED);
+    assert(fin_state.fin_seen);
+    assert(fin_state.next_sequence == 101);
+    tcp_reassembly_direction_cleanup(&fin_state);
+
+    assert(tcp_reassembly_direction_init(&rst_state, 64));
+    assert(tcp_reassembly_process_segment(&rst_state,
+                                          200,
+                                          TCP_FLAG_RST,
+                                          NULL,
+                                          0) == TCP_REASSEMBLY_ACCEPTED);
+    assert(rst_state.rst_seen);
+    tcp_reassembly_direction_cleanup(&rst_state);
 }
 
 static void test_tcp_reassembly_drops_when_memory_cap_is_exceeded(void) {
@@ -105,7 +145,9 @@ int main(void) {
     test_tcp_reassembly_accepts_in_order_data();
     test_tcp_reassembly_ignores_exact_retransmission();
     test_tcp_reassembly_buffers_simple_out_of_order_data();
+    test_tcp_reassembly_records_gap_without_advancing_stream();
     test_tcp_reassembly_trims_overlap_predictably();
+    test_tcp_reassembly_tracks_fin_and_rst();
     test_tcp_reassembly_drops_when_memory_cap_is_exceeded();
     test_reassembled_http_feeds_existing_decoder();
 

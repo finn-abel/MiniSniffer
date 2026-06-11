@@ -316,6 +316,9 @@ static int parse_payload_hex_pattern(
 
 int cli_parse_args(int argc, char **argv, AppConfig *config) {
     const char *program_name = argc > 0 ? argv[0] : "PacketScope";
+    bool max_flows_was_set = false;
+    bool stream_buffer_was_set = false;
+    bool flow_timeout_was_set = false;
     int i;
 
     if (config == NULL) {
@@ -534,6 +537,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (parse_positive_size(argv[i + 1], &config->max_flows) != 0) {
                 return fail_invalid_positive_size(program_name, "--max-flows");
             }
+            max_flows_was_set = true;
             i++;
         } else if (strcmp(argv[i], "--stream-buffer-bytes") == 0) {
             if (!has_value(argc, argv, i)) {
@@ -542,6 +546,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (parse_positive_size(argv[i + 1], &config->stream_buffer_bytes) != 0) {
                 return fail_invalid_positive_size(program_name, "--stream-buffer-bytes");
             }
+            stream_buffer_was_set = true;
             i++;
         } else if (strcmp(argv[i], "--flow-timeout") == 0) {
             if (!has_value(argc, argv, i)) {
@@ -550,6 +555,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (parse_positive_uint32(argv[i + 1], &config->flow_timeout_seconds) != 0) {
                 return fail_invalid_positive_size(program_name, "--flow-timeout");
             }
+            flow_timeout_was_set = true;
             i++;
         } else if (strcmp(argv[i], "--stats") == 0) {
             /* Boolean options toggle config state without consuming a value. */
@@ -561,6 +567,11 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
 
     if (config->reassemble && !config->decode_app) {
         return fail_with_error(program_name, "--reassemble requires --decode-app.");
+    }
+    if (!config->reassemble &&
+        (max_flows_was_set || stream_buffer_was_set || flow_timeout_was_set)) {
+        return fail_with_error(program_name,
+                               "stream buffer and flow table settings require --reassemble.");
     }
     /*
      * App filters need decoded app metadata. Enforce this at parse time so a

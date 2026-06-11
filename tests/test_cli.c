@@ -158,6 +158,52 @@ static void test_cli_parse_args_sets_app_decode_options(void) {
     assert(config.flow_timeout_seconds == 30);
 }
 
+static void test_cli_parse_args_accepts_supported_app_examples(void) {
+    AppConfig config;
+    char *decode_app[] = {"PacketScope", "--decode-app"};
+    char *app_dns[] = {"PacketScope", "--decode-app", "--app", "dns"};
+    char *http_host[] = {
+        "PacketScope", "--decode-app", "--app", "http", "--http-host", "example.com"
+    };
+    char *tls_sni[] = {
+        "PacketScope", "--decode-app", "--app", "tls", "--tls-sni", "example.com"
+    };
+    char *reassembled_tls_sni[] = {
+        "PacketScope", "--decode-app", "--reassemble", "--tls-sni", "example.com"
+    };
+    char *stream_buffer[] = {
+        "PacketScope", "--decode-app", "--reassemble", "--stream-buffer-bytes", "65536"
+    };
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(2, decode_app, &config) == 0);
+    assert(config.decode_app);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, app_dns, &config) == 0);
+    assert(config.filter_app_protocol == APP_PROTO_DNS);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(6, http_host, &config) == 0);
+    assert(config.filter_app_protocol == APP_PROTO_HTTP);
+    assert(strcmp(config.filter_http_host, "example.com") == 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(6, tls_sni, &config) == 0);
+    assert(config.filter_app_protocol == APP_PROTO_TLS);
+    assert(strcmp(config.filter_tls_sni, "example.com") == 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(5, reassembled_tls_sni, &config) == 0);
+    assert(config.reassemble);
+    assert(strcmp(config.filter_tls_sni, "example.com") == 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(5, stream_buffer, &config) == 0);
+    assert(config.reassemble);
+    assert(config.stream_buffer_bytes == 65536);
+}
+
 static void test_cli_parse_args_sets_app_filters(void) {
     AppConfig config;
     char *argv[] = {
@@ -292,21 +338,41 @@ static void test_cli_parse_args_rejects_invalid_payload_options(void) {
 static void test_cli_parse_args_rejects_invalid_app_decode_options(void) {
     AppConfig config;
     char *reassemble_without_decode[] = {"PacketScope", "--reassemble"};
-    char *max_flows_zero[] = {"PacketScope", "--max-flows", "0"};
-    char *stream_buffer_negative[] = {"PacketScope", "--stream-buffer-bytes", "-1"};
-    char *flow_timeout_bad[] = {"PacketScope", "--flow-timeout", "abc"};
+    char *max_flows_zero[] = {"PacketScope", "--decode-app", "--reassemble", "--max-flows", "0"};
+    char *stream_buffer_negative[] = {
+        "PacketScope", "--decode-app", "--reassemble", "--stream-buffer-bytes", "-1"
+    };
+    char *flow_timeout_bad[] = {
+        "PacketScope", "--decode-app", "--reassemble", "--flow-timeout", "abc"
+    };
+    char *max_flows_without_reassemble[] = {"PacketScope", "--decode-app", "--max-flows", "10"};
+    char *stream_buffer_without_reassemble[] = {
+        "PacketScope", "--decode-app", "--stream-buffer-bytes", "1024"
+    };
+    char *flow_timeout_without_reassemble[] = {
+        "PacketScope", "--decode-app", "--flow-timeout", "10"
+    };
 
     config_init_defaults(&config);
     assert(cli_parse_args(2, reassemble_without_decode, &config) != 0);
 
     config_init_defaults(&config);
-    assert(cli_parse_args(3, max_flows_zero, &config) != 0);
+    assert(cli_parse_args(5, max_flows_zero, &config) != 0);
 
     config_init_defaults(&config);
-    assert(cli_parse_args(3, stream_buffer_negative, &config) != 0);
+    assert(cli_parse_args(5, stream_buffer_negative, &config) != 0);
 
     config_init_defaults(&config);
-    assert(cli_parse_args(3, flow_timeout_bad, &config) != 0);
+    assert(cli_parse_args(5, flow_timeout_bad, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, max_flows_without_reassemble, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, stream_buffer_without_reassemble, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, flow_timeout_without_reassemble, &config) != 0);
 }
 
 static void test_cli_parse_args_rejects_app_filters_without_decode_app(void) {
@@ -348,6 +414,7 @@ int main(void) {
     test_cli_parse_args_sets_payload_text_filter();
     test_cli_parse_args_sets_payload_hex_filter();
     test_cli_parse_args_sets_app_decode_options();
+    test_cli_parse_args_accepts_supported_app_examples();
     test_cli_parse_args_sets_app_filters();
     test_cli_parse_args_accepts_combined_filters();
     test_cli_parse_args_rejects_unknown_flag();
