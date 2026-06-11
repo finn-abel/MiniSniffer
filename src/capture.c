@@ -8,6 +8,7 @@
 #include "capture.h"
 #include "csv_logger.h"
 #include "filters.h"
+#include "flow.h"
 #include "output.h"
 #include "parser.h"
 #include "stats.h"
@@ -207,6 +208,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     char default_device[CAPTURE_DEVICE_NAME_LEN];
     const char *device;
     pcap_t *handle;
+    FlowTable flow_table = {0};
+    bool flow_table_ready = false;
     uint32_t captured_packets = 0;
 
     if (config == NULL) {
@@ -255,6 +258,17 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         return 1;
     }
 
+    if (config->reassemble) {
+        if (!flow_table_init(&flow_table,
+                             config->max_flows,
+                             config->flow_timeout_seconds)) {
+            fprintf(stderr, "Error: failed to initialize flow table.\n");
+            pcap_close(handle);
+            return 1;
+        }
+        flow_table_ready = true;
+    }
+
     while (!should_stop &&
            (config->max_packets == 0 ||
             captured_packets < (uint32_t)config->max_packets)) {
@@ -262,8 +276,11 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         const unsigned char *packet = NULL;
         PacketInfo info;
         AppInfo *packet_app_ptr = NULL;
+        FlowInfo *flow = NULL;
+        AppInfo *flow_app_ptr = NULL;
         FilterContext filter_context;
         const char *app_source = "none";
+        uint64_t packet_time;
         int result;
 
         /*
@@ -276,6 +293,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         }
         if (result == -1) {
             fprintf(stderr, "Error: packet capture failed: %s\n", pcap_geterr(handle));
+            flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
         }
@@ -285,10 +303,25 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
 
         if (parser_parse_packet(packet, header->caplen, &info) != 0) {
             fprintf(stderr, "Packet parsing failed.\n");
+            flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
         }
         set_packet_timestamp(&info, header);
+        packet_time = (uint64_t)header->ts.tv_sec;
+
+        if (flow_table_ready) {
+            FlowDirection direction = FLOW_DIR_A_TO_B;
+
+            flow = flow_table_get_or_create(&flow_table, &info, packet_time, &direction);
+            if (flow != NULL) {
+                flow_update_packet(flow, &info, packet_time, direction);
+                if (flow->app_classified) {
+                    flow_app_ptr = &flow->app;
+                    app_source = "flow";
+                }
+            }
+        }
 
         if (config->decode_app) {
             AppDecodeResult decode_result = app_decode_packet(&info, &info.app);
@@ -296,13 +329,18 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             if (decode_result == APP_DECODE_OK && info.app.protocol != APP_PROTO_UNKNOWN) {
                 packet_app_ptr = &info.app;
                 app_source = "packet";
+                if (flow != NULL && !flow->app_classified) {
+                    flow->app = info.app;
+                    flow->app_classified = true;
+                    flow_app_ptr = &flow->app;
+                }
             }
         }
 
         filter_context.packet = &info;
         filter_context.packet_app = packet_app_ptr;
-        filter_context.flow_app = NULL;
-        filter_context.flow_is_classified = false;
+        filter_context.flow_app = flow_app_ptr;
+        filter_context.flow_is_classified = flow != NULL && flow->app_classified;
         if (!filters_match(config, &filter_context)) {
             continue;
         }
@@ -316,11 +354,15 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         packet_info_print(&info);
         if (config->decode_app && packet_app_ptr != NULL) {
             output_print_packet_app(packet_app_ptr);
+        } else if (config->decode_app && flow_app_ptr != NULL) {
+            output_print_packet_app(flow_app_ptr);
         }
         if (config->payload_display_enabled != 0) {
             packet_info_print_payload(&info, config->payload_preview_bytes);
         }
-        csv_logger_write_packet(&info, packet_app_ptr, app_source);
+        csv_logger_write_packet(&info,
+                                packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
+                                app_source);
         stats_update(stats, &info);
     }
 
@@ -328,6 +370,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         printf("\nCapture stopped.\n");
     }
 
+    flow_table_cleanup(&flow_table);
     pcap_close(handle);
     return 0;
 }

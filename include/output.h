@@ -1,7 +1,7 @@
 #ifndef OUTPUT_H
 #define OUTPUT_H
 
-#include "common.h"
+#include "flow.h"
 
 /*
  * Prints decoded packet-local application metadata under the packet summary.
