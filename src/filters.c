@@ -180,17 +180,19 @@ static int app_filters_enabled(const AppConfig *config) {
 }
 
 /*
- * Packet-local metadata is authoritative now. Flow metadata is accepted through
- * the same matcher so later stream-aware classification can pass future packets.
+ * Packet-local mode uses only packet_app. Reassembly mode uses only already
+ * classified flow_app, which means packets seen before classification do not
+ * pass app filters and are not buffered for later replay.
  */
 static int app_filters_match(const AppConfig *config, const FilterContext *context) {
     if (!app_filters_enabled(config)) {
         return 1;
     }
-    if (app_filter_matches_one(config, context->packet_app)) {
-        return 1;
+    if (config->reassemble) {
+        return context->flow_is_classified &&
+               app_filter_matches_one(config, context->flow_app);
     }
-    if (context->flow_is_classified && app_filter_matches_one(config, context->flow_app)) {
+    if (app_filter_matches_one(config, context->packet_app)) {
         return 1;
     }
 

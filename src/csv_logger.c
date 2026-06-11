@@ -231,6 +231,18 @@ static void write_hex_version(uint16_t version) {
     }
 }
 
+static const char *normalized_app_source(const AppInfo *app, const char *app_source) {
+    if (app == NULL || app->protocol == APP_PROTO_UNKNOWN) {
+        return "none";
+    }
+    if (app_source != NULL &&
+        (strcmp(app_source, "packet") == 0 || strcmp(app_source, "flow") == 0)) {
+        return app_source;
+    }
+
+    return "none";
+}
+
 /*
  * App rows always include the full stable app schema. Missing metadata is
  * represented as empty fields, while app_source records packet/flow/none.
@@ -287,7 +299,7 @@ static void write_app_packet(const PacketInfo *packet, const AppInfo *app, const
     fprintf(log_file, ",");
     write_hex_version(row_app->tls_client_version);
     fprintf(log_file, ",");
-    write_csv_text(log_file, app_source == NULL ? "none" : app_source);
+    write_csv_text(log_file, normalized_app_source(app, app_source));
     fprintf(log_file, "\n");
 }
 

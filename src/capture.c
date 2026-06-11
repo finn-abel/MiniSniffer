@@ -325,7 +325,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         AppInfo *flow_app_ptr = NULL;
         FilterContext filter_context;
         const char *app_source = "none";
-        bool flow_app_decoded_now = false;
+        AppInfo *filter_flow_app_ptr = NULL;
+        bool flow_was_classified_before_packet = false;
         uint64_t packet_time;
         int result;
 
@@ -362,14 +363,16 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             flow = flow_table_get_or_create(&flow_table, &info, packet_time, &direction);
             if (flow != NULL) {
                 flow_update_packet(flow, &info, packet_time, direction);
+                flow_was_classified_before_packet = flow->app_classified;
                 if (flow->app_classified) {
                     flow_app_ptr = &flow->app;
+                    filter_flow_app_ptr = &flow->app;
                     app_source = "flow";
                 } else if (config->decode_app &&
                            flow_decode_stream_app(flow, direction, &info)) {
                     flow_app_ptr = &flow->app;
                     app_source = "flow";
-                    flow_app_decoded_now = true;
+                    output_print_flow_app_event(flow);
                 }
             }
         }
@@ -390,8 +393,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
 
         filter_context.packet = &info;
         filter_context.packet_app = packet_app_ptr;
-        filter_context.flow_app = flow_app_ptr;
-        filter_context.flow_is_classified = flow != NULL && flow->app_classified;
+        filter_context.flow_app = filter_flow_app_ptr;
+        filter_context.flow_is_classified = flow_was_classified_before_packet;
         if (!filters_match(config, &filter_context)) {
             continue;
         }
@@ -405,8 +408,6 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         packet_info_print(&info);
         if (config->decode_app && packet_app_ptr != NULL) {
             output_print_packet_app(packet_app_ptr);
-        } else if (config->decode_app && flow_app_decoded_now && flow != NULL) {
-            output_print_flow_app_event(flow);
         }
         if (config->payload_display_enabled != 0) {
             packet_info_print_payload(&info, config->payload_preview_bytes);

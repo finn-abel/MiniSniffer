@@ -71,6 +71,7 @@ static void test_filters_match_flow_app(void) {
     FilterContext context;
 
     config_init_defaults(&config);
+    config.reassemble = true;
     config.filter_tls_alpn_enabled = true;
     snprintf(config.filter_tls_alpn, sizeof(config.filter_tls_alpn), "h2");
 
@@ -80,6 +81,65 @@ static void test_filters_match_flow_app(void) {
     context.flow_is_classified = true;
 
     assert(filters_match(&config, &context));
+}
+
+static void test_reassembly_mode_ignores_packet_app_for_app_filters(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo packet_app = make_http_app();
+    FilterContext context;
+
+    config_init_defaults(&config);
+    config.reassemble = true;
+    config.filter_app_enabled = true;
+    config.filter_app_protocol = APP_PROTO_HTTP;
+
+    context.packet = &packet;
+    context.packet_app = &packet_app;
+    context.flow_app = NULL;
+    context.flow_is_classified = false;
+
+    assert(!filters_match(&config, &context));
+}
+
+static void test_reassembly_mode_matches_future_classified_flow_packets(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo flow_app = make_tls_app();
+    FilterContext context;
+
+    config_init_defaults(&config);
+    config.reassemble = true;
+    config.filter_app_enabled = true;
+    config.filter_app_protocol = APP_PROTO_TLS;
+    config.filter_tls_alpn_enabled = true;
+    snprintf(config.filter_tls_alpn, sizeof(config.filter_tls_alpn), "h2");
+
+    context.packet = &packet;
+    context.packet_app = NULL;
+    context.flow_app = &flow_app;
+    context.flow_is_classified = true;
+
+    assert(filters_match(&config, &context));
+}
+
+static void test_reassembly_mode_classifying_packet_does_not_match_yet(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo flow_app = make_tls_app();
+    FilterContext context;
+
+    config_init_defaults(&config);
+    config.reassemble = true;
+    config.filter_app_enabled = true;
+    config.filter_app_protocol = APP_PROTO_TLS;
+
+    context.packet = &packet;
+    context.packet_app = NULL;
+    context.flow_app = &flow_app;
+    context.flow_is_classified = false;
+
+    assert(!filters_match(&config, &context));
 }
 
 static void test_filters_fail_without_app_data(void) {
@@ -102,6 +162,9 @@ static void test_filters_fail_without_app_data(void) {
 int main(void) {
     test_filters_match_packet_app();
     test_filters_match_flow_app();
+    test_reassembly_mode_ignores_packet_app_for_app_filters();
+    test_reassembly_mode_matches_future_classified_flow_packets();
+    test_reassembly_mode_classifying_packet_does_not_match_yet();
     test_filters_fail_without_app_data();
 
     printf("All filters tests passed.\n");

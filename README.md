@@ -170,8 +170,12 @@ sudo ./PacketScope --payload-hex "47 45 54 20"
 Hex patterns may include spaces, colons, or hyphens as separators. The example
 above matches the bytes for `GET `.
 
-Application filters use decoded packet-local metadata for now. If app metadata
-is absent or incomplete, app filters fail for that packet.
+Application filters use decoded packet-local metadata when `--reassemble` is
+off. If app metadata is absent or incomplete, app filters fail for that packet.
+With `--reassemble`, app filters use flow classification instead: packets before
+classification do not match, and future packets in a matching classified flow
+pass. PacketScope does not buffer or replay earlier packets after a flow becomes
+classified.
 
 Application filter examples:
 
@@ -214,21 +218,30 @@ summary when it is available:
       app: http method=GET host=example.com path=/
 ```
 
+With `--decode-app --reassemble`, stream-derived app metadata is printed as a
+flow event when the flow is first classified:
+
+```text
+flow tcp 192.168.1.25:51432 <-> 93.184.216.34:443 app=tls sni=example.com alpn=h2
+```
+
 Packets that cannot be parsed as Ethernet/IPv4 are displayed as `OTHER` when
 they pass the active filters.
 
 ## Application Decoding Limits
 
-Application decoding is packet-local in the current build:
+Without `--reassemble`, application decoding is packet-local:
 
 - HTTP/1.x is decoded only when the complete header block is inside one packet.
 - UDP DNS is decoded packet-locally.
 - DNS over TCP is decoded only when the full two-byte length-prefixed DNS frame is inside one packet.
 - TLS is decoded only when the full ClientHello record is inside one packet.
 
-TCP stream reassembly is planned; incomplete app messages currently return an
-internal `APP_DECODE_NEED_MORE` result and are not displayed as decoded app
-metadata.
+With `--reassemble`, TCP streams are reassembled conservatively with bounded
+per-direction buffers. HTTP headers, TLS ClientHello records, and DNS-over-TCP
+frames can be decoded after they span multiple in-order or simply reordered TCP
+segments. Data that exceeds configured memory caps is dropped instead of growing
+without bound.
 
 ## CSV Logging
 
@@ -260,8 +273,8 @@ When `--decode-app` is enabled, CSV logs use the stable application schema:
 timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source
 ```
 
-`app_source` is `packet` for packet-local metadata, `flow` for future flow
-metadata, or `none` when no app metadata is available.
+`app_source` is `packet` for packet-local metadata, `flow` for stream-derived
+flow metadata, or `none` when no app metadata is available.
 
 ## Stats
 
