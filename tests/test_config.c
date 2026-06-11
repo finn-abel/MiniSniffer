@@ -76,6 +76,27 @@ static void test_config_defaults_payload_options(void) {
     assert(config.filter_payload_hex_length == 0);
 }
 
+static void test_config_defaults_app_filters(void) {
+    AppConfig config;
+
+    config_init_defaults(&config);
+
+    assert(config.filter_app_enabled == false);
+    assert(config.filter_app_protocol == APP_PROTO_UNKNOWN);
+    assert(config.filter_http_host_enabled == false);
+    assert(strcmp(config.filter_http_host, "") == 0);
+    assert(config.filter_http_method_enabled == false);
+    assert(strcmp(config.filter_http_method, "") == 0);
+    assert(config.filter_dns_query_enabled == false);
+    assert(strcmp(config.filter_dns_query, "") == 0);
+    assert(config.filter_dns_type_enabled == false);
+    assert(config.filter_dns_type == 0);
+    assert(config.filter_tls_sni_enabled == false);
+    assert(strcmp(config.filter_tls_sni, "") == 0);
+    assert(config.filter_tls_alpn_enabled == false);
+    assert(strcmp(config.filter_tls_alpn, "") == 0);
+}
+
 static void test_config_init_defaults_rejects_null_input(void) {
     config_init_defaults(NULL);
 }
@@ -88,6 +109,7 @@ int main(void) {
     test_config_defaults_host_filter();
     test_config_defaults_logging();
     test_config_defaults_payload_options();
+    test_config_defaults_app_filters();
     test_config_init_defaults_rejects_null_input();
 
     printf("All config tests passed.\n");

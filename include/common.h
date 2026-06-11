@@ -68,6 +68,14 @@ typedef struct {
 } AppInfo;
 
 /*
+ * FlowInfo is intentionally small until TCP tracking lands.
+ * Output and filters can already depend on the flow/app boundary.
+ */
+typedef struct {
+    AppInfo app;
+} FlowInfo;
+
+/*
  * PacketInfo represents one captured packet after basic parsing.
  * It stores source and destination IPv4 addresses, optional transport ports,
  * protocol type, packet number, packet size, a direct payload view, and a
@@ -85,6 +93,7 @@ typedef struct {
 
     uint32_t packet_number;
     size_t size;
+    char timestamp[32];
 
     int has_ports;
 

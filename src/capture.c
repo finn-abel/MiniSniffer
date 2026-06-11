@@ -4,9 +4,11 @@
 #include <string.h>
 #include <sys/socket.h>
 
+#include "app_decoder.h"
 #include "capture.h"
-#include "filter.h"
-#include "logger.h"
+#include "csv_logger.h"
+#include "filters.h"
+#include "output.h"
 #include "parser.h"
 #include "stats.h"
 
@@ -184,6 +186,18 @@ static int interface_exists(const char *device, char *error_buffer) {
     return 0;
 }
 
+static void set_packet_timestamp(PacketInfo *info, const struct pcap_pkthdr *header) {
+    if (info == NULL || header == NULL) {
+        return;
+    }
+
+    snprintf(info->timestamp,
+             sizeof(info->timestamp),
+             "%ld.%06ld",
+             (long)header->ts.tv_sec,
+             (long)header->ts.tv_usec);
+}
+
 /*
  * Opens a live packet capture and processes packets until the displayed count
  * reaches config->max_packets, or forever when max_packets is zero.
@@ -247,6 +261,10 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         struct pcap_pkthdr *header = NULL;
         const unsigned char *packet = NULL;
         PacketInfo info;
+        AppInfo packet_app;
+        AppInfo *packet_app_ptr = NULL;
+        FilterContext filter_context;
+        const char *app_source = "none";
         int result;
 
         /*
@@ -271,7 +289,24 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             pcap_close(handle);
             return 1;
         }
-        if (!filter_packet_matches(config, &info)) {
+        set_packet_timestamp(&info, header);
+
+        memset(&packet_app, 0, sizeof(packet_app));
+        packet_app.protocol = APP_PROTO_UNKNOWN;
+        if (config->decode_app) {
+            AppDecodeResult decode_result = app_decode_packet(&info, &packet_app);
+
+            if (decode_result == APP_DECODE_OK && packet_app.protocol != APP_PROTO_UNKNOWN) {
+                packet_app_ptr = &packet_app;
+                app_source = "packet";
+            }
+        }
+
+        filter_context.packet = &info;
+        filter_context.packet_app = packet_app_ptr;
+        filter_context.flow_app = NULL;
+        filter_context.flow_is_classified = false;
+        if (!filters_match(config, &filter_context)) {
             continue;
         }
 
@@ -282,10 +317,13 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         captured_packets++;
         info.packet_number = captured_packets;
         packet_info_print(&info);
+        if (config->decode_app && packet_app_ptr != NULL) {
+            output_print_packet_app(packet_app_ptr);
+        }
         if (config->payload_display_enabled != 0) {
             packet_info_print_payload(&info, config->payload_preview_bytes);
         }
-        logger_write(&info);
+        csv_logger_write_packet(&info, packet_app_ptr, app_source);
         stats_update(stats, &info);
     }
 

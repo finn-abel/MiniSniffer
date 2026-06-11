@@ -17,7 +17,10 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
     fprintf(stream, "       [--decode-app] [--reassemble] [--max-flows <number>]\n");
-    fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>] [--stats]\n");
+    fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n");
+    fprintf(stream, "       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]\n");
+    fprintf(stream, "       [--dns-query <name>] [--dns-type <type>] [--tls-sni <host>]\n");
+    fprintf(stream, "       [--tls-alpn <protocol>] [--stats]\n");
 }
 
 void cli_print_usage(const char *program_name) {
@@ -159,10 +162,80 @@ static int fail_invalid_payload_hex(const char *program_name) {
     return 1;
 }
 
+static int fail_invalid_app(const char *program_name, const char *value) {
+    fprintf(stderr, "Error: invalid app protocol: %s.\n", value);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
+static int fail_invalid_dns_type(const char *program_name, const char *value) {
+    fprintf(stderr, "Error: invalid DNS type: %s.\n", value);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
 static int fail_invalid_positive_size(const char *program_name, const char *option_name) {
     fprintf(stderr, "Error: %s must be a positive integer.\n", option_name);
     print_usage(stderr, program_name);
     return 1;
+}
+
+/*
+ * App protocol names are lowercase on the CLI to match future app filter names
+ * and CSV app_protocol values.
+ */
+static int parse_app_protocol(const char *text, AppProtocol *protocol) {
+    if (text == NULL || protocol == NULL) {
+        return 1;
+    }
+    if (strcmp(text, "http") == 0) {
+        *protocol = APP_PROTO_HTTP;
+        return 0;
+    }
+    if (strcmp(text, "dns") == 0) {
+        *protocol = APP_PROTO_DNS;
+        return 0;
+    }
+    if (strcmp(text, "tls") == 0) {
+        *protocol = APP_PROTO_TLS;
+        return 0;
+    }
+
+    return 1;
+}
+
+/*
+ * DNS type filters store numeric type codes in config. Common names are accepted
+ * for usability while numeric values keep matching independent of display text.
+ */
+static int parse_dns_type(const char *text, uint16_t *type) {
+    int numeric_type;
+
+    if (text == NULL || type == NULL) {
+        return 1;
+    }
+    if (strcmp(text, "A") == 0 || strcmp(text, "a") == 0) {
+        *type = 1;
+        return 0;
+    }
+    if (strcmp(text, "NS") == 0 || strcmp(text, "ns") == 0) {
+        *type = 2;
+        return 0;
+    }
+    if (strcmp(text, "CNAME") == 0 || strcmp(text, "cname") == 0) {
+        *type = 5;
+        return 0;
+    }
+    if (strcmp(text, "AAAA") == 0 || strcmp(text, "aaaa") == 0) {
+        *type = 28;
+        return 0;
+    }
+    if (parse_positive_int(text, &numeric_type) != 0 || numeric_type > 65535) {
+        return 1;
+    }
+
+    *type = (uint16_t)numeric_type;
+    return 0;
 }
 
 /*
@@ -377,6 +450,81 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             i++;
         } else if (strcmp(argv[i], "--decode-app") == 0) {
             config->decode_app = true;
+        } else if (strcmp(argv[i], "--app") == 0) {
+            /* App filters are parsed now but validated after all flags are read. */
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--app requires a value.");
+            }
+            if (parse_app_protocol(argv[i + 1], &config->filter_app_protocol) != 0) {
+                return fail_invalid_app(program_name, argv[i + 1]);
+            }
+            config->filter_app_enabled = true;
+            i++;
+        } else if (strcmp(argv[i], "--http-host") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--http-host requires a value.");
+            }
+            if (copy_arg(config->filter_http_host,
+                         sizeof(config->filter_http_host),
+                         argv[i + 1]) != 0) {
+                return fail_with_error(program_name, "HTTP host filter is too long.");
+            }
+            config->filter_http_host_enabled = true;
+            i++;
+        } else if (strcmp(argv[i], "--http-method") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--http-method requires a value.");
+            }
+            if (copy_arg(config->filter_http_method,
+                         sizeof(config->filter_http_method),
+                         argv[i + 1]) != 0) {
+                return fail_with_error(program_name, "HTTP method filter is too long.");
+            }
+            config->filter_http_method_enabled = true;
+            i++;
+        } else if (strcmp(argv[i], "--dns-query") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--dns-query requires a value.");
+            }
+            if (copy_arg(config->filter_dns_query,
+                         sizeof(config->filter_dns_query),
+                         argv[i + 1]) != 0) {
+                return fail_with_error(program_name, "DNS query filter is too long.");
+            }
+            config->filter_dns_query_enabled = true;
+            i++;
+        } else if (strcmp(argv[i], "--dns-type") == 0) {
+            /* Store DNS type as a number so A and 1 behave identically. */
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--dns-type requires a value.");
+            }
+            if (parse_dns_type(argv[i + 1], &config->filter_dns_type) != 0) {
+                return fail_invalid_dns_type(program_name, argv[i + 1]);
+            }
+            config->filter_dns_type_enabled = true;
+            i++;
+        } else if (strcmp(argv[i], "--tls-sni") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--tls-sni requires a value.");
+            }
+            if (copy_arg(config->filter_tls_sni,
+                         sizeof(config->filter_tls_sni),
+                         argv[i + 1]) != 0) {
+                return fail_with_error(program_name, "TLS SNI filter is too long.");
+            }
+            config->filter_tls_sni_enabled = true;
+            i++;
+        } else if (strcmp(argv[i], "--tls-alpn") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--tls-alpn requires a value.");
+            }
+            if (copy_arg(config->filter_tls_alpn,
+                         sizeof(config->filter_tls_alpn),
+                         argv[i + 1]) != 0) {
+                return fail_with_error(program_name, "TLS ALPN filter is too long.");
+            }
+            config->filter_tls_alpn_enabled = true;
+            i++;
         } else if (strcmp(argv[i], "--reassemble") == 0) {
             config->reassemble = true;
         } else if (strcmp(argv[i], "--max-flows") == 0) {
@@ -413,6 +561,20 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
 
     if (config->reassemble && !config->decode_app) {
         return fail_with_error(program_name, "--reassemble requires --decode-app.");
+    }
+    /*
+     * App filters need decoded app metadata. Enforce this at parse time so a
+     * mistyped command does not silently match no packets.
+     */
+    if (!config->decode_app &&
+        (config->filter_app_enabled ||
+         config->filter_http_host_enabled ||
+         config->filter_http_method_enabled ||
+         config->filter_dns_query_enabled ||
+         config->filter_dns_type_enabled ||
+         config->filter_tls_sni_enabled ||
+         config->filter_tls_alpn_enabled)) {
+        return fail_with_error(program_name, "app filters require --decode-app.");
     }
 
     return 0;

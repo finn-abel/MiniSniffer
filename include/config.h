@@ -51,6 +51,27 @@ typedef struct {
     unsigned char filter_payload_hex[PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES];
     size_t filter_payload_hex_length;
 
+    bool filter_app_enabled;
+    AppProtocol filter_app_protocol;
+
+    bool filter_http_host_enabled;
+    char filter_http_host[PACKETSCOPE_APP_TEXT_LEN];
+
+    bool filter_http_method_enabled;
+    char filter_http_method[16];
+
+    bool filter_dns_query_enabled;
+    char filter_dns_query[PACKETSCOPE_APP_TEXT_LEN];
+
+    bool filter_dns_type_enabled;
+    uint16_t filter_dns_type;
+
+    bool filter_tls_sni_enabled;
+    char filter_tls_sni[PACKETSCOPE_APP_TEXT_LEN];
+
+    bool filter_tls_alpn_enabled;
+    char filter_tls_alpn[PACKETSCOPE_TLS_ALPN_LEN];
+
     int payload_display_enabled;
 
     int logging_enabled;

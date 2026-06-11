@@ -4,7 +4,7 @@
 #include "capture.h"
 #include "cli.h"
 #include "config.h"
-#include "logger.h"
+#include "csv_logger.h"
 #include "stats.h"
 
 static int args_requested_help(int argc, char **argv) {
@@ -35,10 +35,11 @@ int main(int argc, char **argv) {
 
     stats_init(&stats);
 
-    logger_set_payload_logging(config.payload_display_enabled,
-                               config.payload_preview_bytes);
-
-    if (config.logging_enabled != 0 && logger_open(config.log_path) != 0) {
+    if (config.logging_enabled != 0 &&
+        csv_logger_open(config.log_path,
+                        config.decode_app,
+                        config.payload_display_enabled != 0,
+                        config.payload_preview_bytes) != 0) {
         return 1;
     }
 
@@ -76,12 +77,35 @@ int main(int argc, char **argv) {
     if (config.payload_display_enabled != 0) {
         printf("Payload preview: %zu bytes\n", config.payload_preview_bytes);
     }
+    if (config.filter_app_enabled) {
+        printf("App filter: %s\n",
+               config.filter_app_protocol == APP_PROTO_HTTP ? "http" :
+               config.filter_app_protocol == APP_PROTO_DNS ? "dns" : "tls");
+    }
+    if (config.filter_http_host_enabled) {
+        printf("HTTP host filter: %s\n", config.filter_http_host);
+    }
+    if (config.filter_http_method_enabled) {
+        printf("HTTP method filter: %s\n", config.filter_http_method);
+    }
+    if (config.filter_dns_query_enabled) {
+        printf("DNS query filter: %s\n", config.filter_dns_query);
+    }
+    if (config.filter_dns_type_enabled) {
+        printf("DNS type filter: %u\n", (unsigned int)config.filter_dns_type);
+    }
+    if (config.filter_tls_sni_enabled) {
+        printf("TLS SNI filter: %s\n", config.filter_tls_sni);
+    }
+    if (config.filter_tls_alpn_enabled) {
+        printf("TLS ALPN filter: %s\n", config.filter_tls_alpn);
+    }
     if (config.logging_enabled != 0) {
         printf("Log file: %s\n", config.log_path);
     }
 
     capture_result = capture_start(&config, &stats);
-    logger_close();
+    csv_logger_close();
 
     if (config.stats_mode != 0) {
         stats_print(&stats);

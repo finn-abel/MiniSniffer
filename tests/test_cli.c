@@ -158,6 +158,46 @@ static void test_cli_parse_args_sets_app_decode_options(void) {
     assert(config.flow_timeout_seconds == 30);
 }
 
+static void test_cli_parse_args_sets_app_filters(void) {
+    AppConfig config;
+    char *argv[] = {
+        "PacketScope",
+        "--decode-app",
+        "--app",
+        "http",
+        "--http-host",
+        "example.com",
+        "--http-method",
+        "GET",
+        "--dns-query",
+        "example.com",
+        "--dns-type",
+        "A",
+        "--tls-sni",
+        "example.com",
+        "--tls-alpn",
+        "h2"
+    };
+
+    config_init_defaults(&config);
+
+    assert(cli_parse_args(16, argv, &config) == 0);
+    assert(config.filter_app_enabled == true);
+    assert(config.filter_app_protocol == APP_PROTO_HTTP);
+    assert(config.filter_http_host_enabled == true);
+    assert(strcmp(config.filter_http_host, "example.com") == 0);
+    assert(config.filter_http_method_enabled == true);
+    assert(strcmp(config.filter_http_method, "GET") == 0);
+    assert(config.filter_dns_query_enabled == true);
+    assert(strcmp(config.filter_dns_query, "example.com") == 0);
+    assert(config.filter_dns_type_enabled == true);
+    assert(config.filter_dns_type == 1);
+    assert(config.filter_tls_sni_enabled == true);
+    assert(strcmp(config.filter_tls_sni, "example.com") == 0);
+    assert(config.filter_tls_alpn_enabled == true);
+    assert(strcmp(config.filter_tls_alpn, "h2") == 0);
+}
+
 static void test_cli_parse_args_accepts_combined_filters(void) {
     AppConfig config;
     char *argv[] = {
@@ -269,6 +309,27 @@ static void test_cli_parse_args_rejects_invalid_app_decode_options(void) {
     assert(cli_parse_args(3, flow_timeout_bad, &config) != 0);
 }
 
+static void test_cli_parse_args_rejects_app_filters_without_decode_app(void) {
+    AppConfig config;
+    char *argv[] = {"PacketScope", "--app", "dns"};
+
+    config_init_defaults(&config);
+
+    assert(cli_parse_args(3, argv, &config) != 0);
+}
+
+static void test_cli_parse_args_rejects_invalid_app_filters(void) {
+    AppConfig config;
+    char *bad_app[] = {"PacketScope", "--decode-app", "--app", "smtp"};
+    char *bad_dns_type[] = {"PacketScope", "--decode-app", "--dns-type", "NOPE"};
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, bad_app, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, bad_dns_type, &config) != 0);
+}
+
 static void test_cli_print_usage_accepts_null_program_name(void) {
     cli_print_usage(NULL);
 }
@@ -287,6 +348,7 @@ int main(void) {
     test_cli_parse_args_sets_payload_text_filter();
     test_cli_parse_args_sets_payload_hex_filter();
     test_cli_parse_args_sets_app_decode_options();
+    test_cli_parse_args_sets_app_filters();
     test_cli_parse_args_accepts_combined_filters();
     test_cli_parse_args_rejects_unknown_flag();
     test_cli_parse_args_rejects_missing_value();
@@ -297,6 +359,8 @@ int main(void) {
     test_cli_parse_args_rejects_invalid_host();
     test_cli_parse_args_rejects_invalid_payload_options();
     test_cli_parse_args_rejects_invalid_app_decode_options();
+    test_cli_parse_args_rejects_app_filters_without_decode_app();
+    test_cli_parse_args_rejects_invalid_app_filters();
     test_cli_print_usage_accepts_null_program_name();
 
     printf("All cli tests passed.\n");
