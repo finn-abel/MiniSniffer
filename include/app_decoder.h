@@ -40,4 +40,16 @@ AppDecodeResult app_decode_buffer(
     AppInfo *out
 );
 
+/*
+ * Decodes reassembled TCP stream bytes using packet ports as framing hints.
+ * DNS-over-TCP keeps its two-byte length prefix here, while HTTP and TLS use
+ * the same buffer decoders as packet-local decoding.
+ */
+AppDecodeResult app_decode_stream(
+    const PacketInfo *packet,
+    const uint8_t *data,
+    size_t length,
+    AppInfo *out
+);
+
 #endif

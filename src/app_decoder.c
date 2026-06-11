@@ -214,3 +214,32 @@ AppDecodeResult app_decode_packet(
     app_info_clear(out);
     return APP_DECODE_NO_MATCH;
 }
+
+AppDecodeResult app_decode_stream(
+    const PacketInfo *packet,
+    const uint8_t *data,
+    size_t length,
+    AppInfo *out
+) {
+    app_info_clear(out);
+
+    if (packet == NULL || data == NULL || length == 0) {
+        return APP_DECODE_NO_MATCH;
+    }
+
+    if (packet->protocol == PROTO_TCP &&
+        (port_matches(packet, HTTP_PORT) ||
+         port_matches(packet, HTTP_ALT_PORT) ||
+         port_matches(packet, HTTP_DEV_PORT))) {
+        return preferred_result(app_http_decode(data, length, out), APP_PROTO_HTTP);
+    }
+    if (packet->protocol == PROTO_TCP &&
+        (port_matches(packet, TLS_PORT) || port_matches(packet, TLS_ALT_PORT))) {
+        return preferred_result(app_tls_decode_client_hello(data, length, out), APP_PROTO_TLS);
+    }
+    if (packet->protocol == PROTO_TCP && port_matches(packet, DNS_PORT)) {
+        return preferred_result(app_dns_decode_tcp_frame(data, length, out), APP_PROTO_DNS);
+    }
+
+    return app_decode_buffer(APP_PROTO_UNKNOWN, data, length, out);
+}

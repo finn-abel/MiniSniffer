@@ -11,7 +11,9 @@
 #include "flow.h"
 #include "output.h"
 #include "parser.h"
+#include "stream_buffer.h"
 #include "stats.h"
+#include "tcp_reassembly.h"
 
 #define CAPTURE_SNAPLEN 65535
 #define CAPTURE_PROMISCUOUS 0
@@ -199,6 +201,48 @@ static void set_packet_timestamp(PacketInfo *info, const struct pcap_pkthdr *hea
              (long)header->ts.tv_usec);
 }
 
+static bool flow_decode_stream_app(
+    FlowInfo *flow,
+    FlowDirection direction,
+    const PacketInfo *packet
+) {
+    TcpReassemblyDirection *tcp_state;
+    TcpReassemblyResult reassembly_result;
+    const uint8_t *stream_data;
+    size_t stream_length;
+    AppInfo decoded;
+
+    if (flow == NULL ||
+        packet == NULL ||
+        packet->protocol != PROTO_TCP ||
+        packet->has_tcp_sequence == 0 ||
+        flow->app_classified ||
+        direction > FLOW_DIR_B_TO_A) {
+        return false;
+    }
+
+    tcp_state = &flow->directions[direction].tcp;
+    reassembly_result = tcp_reassembly_process_segment(tcp_state,
+                                                       packet->tcp_sequence,
+                                                       packet->tcp_flags,
+                                                       packet->payload,
+                                                       packet->payload_decode_length);
+    if (reassembly_result == TCP_REASSEMBLY_DROPPED) {
+        return false;
+    }
+
+    stream_data = stream_buffer_data(&tcp_state->stream);
+    stream_length = stream_buffer_length(&tcp_state->stream);
+    if (app_decode_stream(packet, stream_data, stream_length, &decoded) == APP_DECODE_OK &&
+        decoded.protocol != APP_PROTO_UNKNOWN) {
+        flow->app = decoded;
+        flow->app_classified = true;
+        return true;
+    }
+
+    return false;
+}
+
 /*
  * Opens a live packet capture and processes packets until the displayed count
  * reaches config->max_packets, or forever when max_packets is zero.
@@ -261,6 +305,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     if (config->reassemble) {
         if (!flow_table_init(&flow_table,
                              config->max_flows,
+                             config->stream_buffer_bytes,
                              config->flow_timeout_seconds)) {
             fprintf(stderr, "Error: failed to initialize flow table.\n");
             pcap_close(handle);
@@ -280,6 +325,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         AppInfo *flow_app_ptr = NULL;
         FilterContext filter_context;
         const char *app_source = "none";
+        bool flow_app_decoded_now = false;
         uint64_t packet_time;
         int result;
 
@@ -319,6 +365,11 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                 if (flow->app_classified) {
                     flow_app_ptr = &flow->app;
                     app_source = "flow";
+                } else if (config->decode_app &&
+                           flow_decode_stream_app(flow, direction, &info)) {
+                    flow_app_ptr = &flow->app;
+                    app_source = "flow";
+                    flow_app_decoded_now = true;
                 }
             }
         }
@@ -354,8 +405,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         packet_info_print(&info);
         if (config->decode_app && packet_app_ptr != NULL) {
             output_print_packet_app(packet_app_ptr);
-        } else if (config->decode_app && flow_app_ptr != NULL) {
-            output_print_packet_app(flow_app_ptr);
+        } else if (config->decode_app && flow_app_decoded_now && flow != NULL) {
+            output_print_flow_app_event(flow);
         }
         if (config->payload_display_enabled != 0) {
             packet_info_print_payload(&info, config->payload_preview_bytes);

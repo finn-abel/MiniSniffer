@@ -89,6 +89,10 @@ typedef struct {
 
     int has_ports;
 
+    int has_tcp_sequence;
+    uint32_t tcp_sequence;
+    uint8_t tcp_flags;
+
     int has_payload;
     const uint8_t *payload;
     size_t payload_capture_length;

@@ -80,6 +80,9 @@ static void remove_flow_at(FlowTable *table, size_t index) {
         return;
     }
 
+    tcp_reassembly_direction_cleanup(&table->flows[index].directions[FLOW_DIR_A_TO_B].tcp);
+    tcp_reassembly_direction_cleanup(&table->flows[index].directions[FLOW_DIR_B_TO_A].tcp);
+
     if (index + 1 < table->count) {
         memmove(&table->flows[index],
                 &table->flows[index + 1],
@@ -92,8 +95,13 @@ static void remove_flow_at(FlowTable *table, size_t index) {
  * Allocate all flow slots up front so runtime packet processing never grows
  * memory beyond the configured max_flows cap.
  */
-bool flow_table_init(FlowTable *table, size_t max_flows, uint32_t timeout_seconds) {
-    if (table == NULL || max_flows == 0) {
+bool flow_table_init(
+    FlowTable *table,
+    size_t max_flows,
+    size_t stream_buffer_bytes,
+    uint32_t timeout_seconds
+) {
+    if (table == NULL || max_flows == 0 || stream_buffer_bytes == 0) {
         return false;
     }
 
@@ -104,6 +112,7 @@ bool flow_table_init(FlowTable *table, size_t max_flows, uint32_t timeout_second
     }
 
     table->max_flows = max_flows;
+    table->stream_buffer_bytes = stream_buffer_bytes;
     table->timeout_seconds = timeout_seconds;
     return true;
 }
@@ -113,10 +122,16 @@ bool flow_table_init(FlowTable *table, size_t max_flows, uint32_t timeout_second
  * path whether reassembly was enabled or setup failed early.
  */
 void flow_table_cleanup(FlowTable *table) {
+    size_t i;
+
     if (table == NULL) {
         return;
     }
 
+    for (i = 0; i < table->count; i++) {
+        tcp_reassembly_direction_cleanup(&table->flows[i].directions[FLOW_DIR_A_TO_B].tcp);
+        tcp_reassembly_direction_cleanup(&table->flows[i].directions[FLOW_DIR_B_TO_A].tcp);
+    }
     free(table->flows);
     memset(table, 0, sizeof(*table));
 }
@@ -259,6 +274,14 @@ FlowInfo *flow_table_get_or_create(
     flow->last_seen_time = now_seconds;
     /* Make unclassified flow state explicit for filters and output. */
     flow->app.protocol = APP_PROTO_UNKNOWN;
+    if (!tcp_reassembly_direction_init(&flow->directions[FLOW_DIR_A_TO_B].tcp,
+                                       table->stream_buffer_bytes) ||
+        !tcp_reassembly_direction_init(&flow->directions[FLOW_DIR_B_TO_A].tcp,
+                                       table->stream_buffer_bytes)) {
+        tcp_reassembly_direction_cleanup(&flow->directions[FLOW_DIR_A_TO_B].tcp);
+        memset(flow, 0, sizeof(*flow));
+        return NULL;
+    }
     table->count++;
 
     if (direction != NULL) {

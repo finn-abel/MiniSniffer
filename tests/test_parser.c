@@ -52,6 +52,9 @@ static void test_parser_parse_packet_parses_tcp_ipv4_metadata(void) {
     assert(info.has_ports == 1);
     assert(info.src_port == 51432);
     assert(info.dst_port == 443);
+    assert(info.has_tcp_sequence == 1);
+    assert(info.tcp_sequence == 0);
+    assert(info.tcp_flags == 0);
 }
 
 static void test_parser_parse_packet_extracts_tcp_payload_preview(void) {

@@ -28,6 +28,16 @@ static uint16_t read_u16_network(const unsigned char *bytes) {
 }
 
 /*
+ * Reads a four-byte network-order integer without assuming packet alignment.
+ */
+static uint32_t read_u32_network(const unsigned char *bytes) {
+    uint32_t value;
+
+    memcpy(&value, bytes, sizeof(value));
+    return ntohl(value);
+}
+
+/*
  * Maps the IPv4 protocol number into PacketScope's shared protocol enum.
  * Unsupported protocol numbers intentionally collapse to PROTO_OTHER.
  */
@@ -63,6 +73,28 @@ static void parse_tcp_ports(
     info->src_port = read_u16_network(tcp_header);
     info->dst_port = read_u16_network(tcp_header + 2);
     info->has_ports = 1;
+}
+
+/*
+ * TCP sequence and flags are needed only by flow reassembly. They stay in
+ * PacketInfo as raw TCP metadata, separate from application decoding.
+ */
+static void parse_tcp_sequence_and_flags(
+    const unsigned char *packet,
+    size_t packet_len,
+    size_t tcp_offset,
+    PacketInfo *info
+) {
+    const unsigned char *tcp_header;
+
+    if (packet_len < tcp_offset + TCP_MIN_HEADER_LEN) {
+        return;
+    }
+
+    tcp_header = packet + tcp_offset;
+    info->tcp_sequence = read_u32_network(tcp_header + 4);
+    info->tcp_flags = (uint8_t)(tcp_header[13] & 0x3f);
+    info->has_tcp_sequence = 1;
 }
 
 /*
@@ -277,6 +309,7 @@ int parser_parse_packet(
     clear_transport_ports(info);
     if (info->protocol == PROTO_TCP) {
         parse_tcp_ports(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_tcp_sequence_and_flags(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
         parse_tcp_payload(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
     } else if (info->protocol == PROTO_UDP) {
         parse_udp_ports(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);

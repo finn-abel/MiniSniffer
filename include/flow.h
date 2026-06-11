@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "common.h"
+#include "tcp_reassembly.h"
 
 /*
  * PacketScope currently tracks IPv4 flows only because PacketInfo stores
@@ -44,12 +45,13 @@ typedef enum {
 typedef struct {
     uint64_t packet_count;
     uint64_t byte_count;
+    TcpReassemblyDirection tcp;
 } FlowDirectionState;
 
 /*
  * FlowInfo owns classification state for a conversation.
- * Reassembly buffers are intentionally not present yet; this table only proves
- * stable identity, bounded lifetime, counters, and app metadata handoff.
+ * Each direction also owns bounded TCP reassembly state for stream-aware app
+ * decoding.
  */
 typedef struct {
     FlowKey key;
@@ -72,6 +74,7 @@ typedef struct {
     FlowInfo *flows;
     size_t count;
     size_t max_flows;
+    size_t stream_buffer_bytes;
     uint32_t timeout_seconds;
 } FlowTable;
 
@@ -79,7 +82,12 @@ typedef struct {
  * Initializes a bounded flow table.
  * Returns false when allocation fails or max_flows is zero.
  */
-bool flow_table_init(FlowTable *table, size_t max_flows, uint32_t timeout_seconds);
+bool flow_table_init(
+    FlowTable *table,
+    size_t max_flows,
+    size_t stream_buffer_bytes,
+    uint32_t timeout_seconds
+);
 
 /*
  * Releases all memory owned by a flow table.

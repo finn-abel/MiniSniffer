@@ -53,7 +53,7 @@ static void test_flow_table_create_find_and_update(void) {
     FlowInfo *first;
     FlowInfo *second;
 
-    assert(flow_table_init(&table, 4, 60));
+    assert(flow_table_init(&table, 4, 1024, 60));
 
     first = flow_table_get_or_create(&table, &forward, 10, &direction);
     assert(first != NULL);
@@ -84,7 +84,7 @@ static void test_flow_table_evicts_idle_flows(void) {
     PacketInfo second_packet = make_tcp_packet("10.0.0.2", 50001, "93.184.216.34", 80, 100);
     FlowDirection direction;
 
-    assert(flow_table_init(&table, 4, 10));
+    assert(flow_table_init(&table, 4, 1024, 10));
     assert(flow_table_get_or_create(&table, &first_packet, 10, &direction) != NULL);
     assert(flow_table_get_or_create(&table, &second_packet, 25, &direction) != NULL);
     assert(table.count == 1);
@@ -98,7 +98,7 @@ static void test_flow_table_caps_max_flows(void) {
     PacketInfo second_packet = make_tcp_packet("10.0.0.2", 50001, "93.184.216.34", 80, 100);
     FlowDirection direction;
 
-    assert(flow_table_init(&table, 1, 60));
+    assert(flow_table_init(&table, 1, 1024, 60));
     assert(flow_table_get_or_create(&table, &first_packet, 10, &direction) != NULL);
     assert(table.count == 1);
     assert(flow_table_get_or_create(&table, &second_packet, 11, &direction) != NULL);
