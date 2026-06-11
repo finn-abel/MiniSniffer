@@ -16,7 +16,8 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
     fprintf(stream, "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
-    fprintf(stream, "       [--stats]\n");
+    fprintf(stream, "       [--decode-app] [--reassemble] [--max-flows <number>]\n");
+    fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>] [--stats]\n");
 }
 
 void cli_print_usage(const char *program_name) {
@@ -50,6 +51,40 @@ static int parse_positive_int(const char *text, int *value) {
     }
 
     *value = (int)parsed;
+    return 0;
+}
+
+/*
+ * Parse positive decimal size values for bounded future app/flow settings.
+ * Reject empty strings, partial parses, zero, negatives, overflow, and junk suffixes.
+ */
+static int parse_positive_size(const char *text, size_t *value) {
+    char *end = NULL;
+    unsigned long long parsed;
+
+    if (text == NULL || value == NULL || text[0] == '\0' || text[0] == '-') {
+        return 1;
+    }
+
+    errno = 0;
+    parsed = strtoull(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0' || parsed == 0 ||
+        parsed > (unsigned long long)SIZE_MAX) {
+        return 1;
+    }
+
+    *value = (size_t)parsed;
+    return 0;
+}
+
+static int parse_positive_uint32(const char *text, uint32_t *value) {
+    size_t parsed;
+
+    if (parse_positive_size(text, &parsed) != 0 || parsed > UINT32_MAX) {
+        return 1;
+    }
+
+    *value = (uint32_t)parsed;
     return 0;
 }
 
@@ -120,6 +155,12 @@ static int fail_invalid_payload_hex(const char *program_name) {
     fprintf(stderr,
             "Error: payload hex filter must contain 1 to %u bytes of hex.\n",
             (unsigned int)PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
+static int fail_invalid_positive_size(const char *program_name, const char *option_name) {
+    fprintf(stderr, "Error: %s must be a positive integer.\n", option_name);
     print_usage(stderr, program_name);
     return 1;
 }
@@ -334,12 +375,44 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             }
             config->filter_payload_hex_enabled = 1;
             i++;
+        } else if (strcmp(argv[i], "--decode-app") == 0) {
+            config->decode_app = true;
+        } else if (strcmp(argv[i], "--reassemble") == 0) {
+            config->reassemble = true;
+        } else if (strcmp(argv[i], "--max-flows") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--max-flows requires a value.");
+            }
+            if (parse_positive_size(argv[i + 1], &config->max_flows) != 0) {
+                return fail_invalid_positive_size(program_name, "--max-flows");
+            }
+            i++;
+        } else if (strcmp(argv[i], "--stream-buffer-bytes") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--stream-buffer-bytes requires a value.");
+            }
+            if (parse_positive_size(argv[i + 1], &config->stream_buffer_bytes) != 0) {
+                return fail_invalid_positive_size(program_name, "--stream-buffer-bytes");
+            }
+            i++;
+        } else if (strcmp(argv[i], "--flow-timeout") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--flow-timeout requires a value.");
+            }
+            if (parse_positive_uint32(argv[i + 1], &config->flow_timeout_seconds) != 0) {
+                return fail_invalid_positive_size(program_name, "--flow-timeout");
+            }
+            i++;
         } else if (strcmp(argv[i], "--stats") == 0) {
             /* Boolean options toggle config state without consuming a value. */
             config->stats_mode = 1;
         } else {
             return fail_with_error(program_name, "unknown option.");
         }
+    }
+
+    if (config->reassemble && !config->decode_app) {
+        return fail_with_error(program_name, "--reassemble requires --decode-app.");
     }
 
     return 0;

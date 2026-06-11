@@ -1,15 +1,20 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "common.h"
 
 #define PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES 128
-#define PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES 64
+#define PACKETSCOPE_DEFAULT_PAYLOAD_DECODE_BYTES 2048
+#define PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES 256
+#define PACKETSCOPE_DEFAULT_MAX_FLOWS 4096
+#define PACKETSCOPE_DEFAULT_STREAM_BUFFER_BYTES 65536
+#define PACKETSCOPE_DEFAULT_FLOW_TIMEOUT_SECONDS 60
 
 /*
- * AppConfig stores runtime options for one PacketScope-C run.
+ * PacketScopeConfig stores runtime options for one PacketScope-C run.
  * Empty interface_name means the capture layer should choose the default device.
  * max_packets of 0 means unlimited capture.
  * Filter values are used only when their matching enabled flag is non-zero.
@@ -17,6 +22,14 @@
  */
 typedef struct {
     char interface_name[64];
+
+    bool decode_app;
+    bool reassemble;
+    size_t payload_decode_bytes;
+    size_t payload_preview_bytes;
+    size_t max_flows;
+    size_t stream_buffer_bytes;
+    uint32_t flow_timeout_seconds;
 
     int max_packets;
     int stats_mode;
@@ -39,11 +52,12 @@ typedef struct {
     size_t filter_payload_hex_length;
 
     int payload_display_enabled;
-    size_t payload_preview_bytes;
 
     int logging_enabled;
     char log_path[256];
-} AppConfig;
+} PacketScopeConfig;
+
+typedef PacketScopeConfig AppConfig;
 
 /*
  * Initializes AppConfig with safe default values.

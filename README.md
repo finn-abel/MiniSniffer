@@ -95,9 +95,9 @@ Usage: ./PacketScope [--help] [--interface <name>] [--count <number>]
 | `--port <number>` | Display only TCP/UDP packets where the source or destination port matches. |
 | `--host <ipv4>` | Display only packets where the source or destination IPv4 address matches. |
 | `--payload` | Print a bounded hex and ASCII payload preview for displayed packets. |
-| `--payload-bytes <number>` | Set the payload preview length. Default is 64 bytes. Maximum is 256 bytes. |
-| `--payload-contains <text>` | Display only packets whose captured payload preview contains the literal text. |
-| `--payload-hex <hex>` | Display only packets whose captured payload preview contains the byte pattern. |
+| `--payload-bytes <number>` | Set the payload preview length. Default is 256 bytes. Maximum is 256 bytes. |
+| `--payload-contains <text>` | Display only packets whose bounded payload decode window contains the literal text. |
+| `--payload-hex <hex>` | Display only packets whose bounded payload decode window contains the byte pattern. |
 | `--log <file>` | Write displayed packets to a CSV file. |
 | `--stats` | Print displayed packet totals after capture completes. |
 
@@ -138,8 +138,9 @@ sudo ./PacketScope --protocol tcp --port 443 --host 142.250.190.14 --count 10
 Port filters apply only to packets with TCP or UDP ports. ICMP and other
 packets do not match a port filter.
 
-Payload filters inspect captured payload preview bytes. They do not require
-`--payload`; use `--payload` only when you also want to print or log previews.
+Payload filters inspect the bounded payload decode window, not the smaller
+console/log preview. They do not require `--payload`; use `--payload` only when
+you also want to print or log previews.
 
 Text payload filter:
 

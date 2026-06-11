@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 
+#include "config.h"
 #include "parser.h"
 
 #define ETHERNET_HEADER_LEN 14
@@ -86,7 +87,7 @@ static void parse_udp_ports(
     info->has_ports = 1;
 }
 
-static void parse_payload_preview(
+static void parse_payload(
     const unsigned char *packet,
     size_t packet_len,
     size_t payload_offset,
@@ -99,19 +100,24 @@ static void parse_payload_preview(
     }
 
     /*
-     * payload_length records how much captured data remains after headers.
-     * payload_preview stores only the bounded prefix used by display/logging
-     * and payload filters.
+     * payload_capture_length records how much captured data remains after
+     * headers. payload_decode_length is the larger bounded view for app
+     * decoders. payload_preview stores only the smaller display/logging prefix.
      */
     available = packet_len - payload_offset;
     info->has_payload = available > 0;
-    info->payload_length = available;
+    info->payload = packet + payload_offset;
+    info->payload_capture_length = available;
+    info->payload_decode_length = available;
+    if (info->payload_decode_length > PACKETSCOPE_DEFAULT_PAYLOAD_DECODE_BYTES) {
+        info->payload_decode_length = PACKETSCOPE_DEFAULT_PAYLOAD_DECODE_BYTES;
+    }
     info->payload_preview_length = available;
     if (info->payload_preview_length > PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES) {
         info->payload_preview_length = PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES;
     }
 
-    memcpy(info->payload_preview, packet + payload_offset, info->payload_preview_length);
+    memcpy(info->payload_preview, info->payload, info->payload_preview_length);
 }
 
 /*
@@ -141,7 +147,7 @@ static void parse_tcp_payload(
         return;
     }
 
-    parse_payload_preview(packet, packet_len, tcp_offset + tcp_header_len, info);
+    parse_payload(packet, packet_len, tcp_offset + tcp_header_len, info);
 }
 
 /*
@@ -157,7 +163,7 @@ static void parse_udp_payload(
         return;
     }
 
-    parse_payload_preview(packet, packet_len, udp_offset + UDP_HEADER_LEN, info);
+    parse_payload(packet, packet_len, udp_offset + UDP_HEADER_LEN, info);
 }
 
 /*
@@ -174,7 +180,7 @@ static void parse_icmp_payload(
         return;
     }
 
-    parse_payload_preview(packet, packet_len, icmp_offset + ICMP_HEADER_LEN, info);
+    parse_payload(packet, packet_len, icmp_offset + ICMP_HEADER_LEN, info);
 }
 
 /*

@@ -19,9 +19,33 @@ typedef enum {
 } Protocol;
 
 /*
+ * AppProtocol describes decoded application-layer metadata. UNKNOWN means no
+ * app decoder matched or decoding has not been requested.
+ */
+typedef enum {
+    APP_PROTO_UNKNOWN = 0,
+    APP_PROTO_HTTP,
+    APP_PROTO_DNS,
+    APP_PROTO_TLS
+} AppProtocol;
+
+#define PACKETSCOPE_APP_SUMMARY_LEN 128
+
+/*
+ * AppInfo is shared by packet-local app decoding now and flow-level app
+ * decoding later. Protocol-specific metadata fields will be added as decoders
+ * are filled in.
+ */
+typedef struct {
+    AppProtocol protocol;
+    char summary[PACKETSCOPE_APP_SUMMARY_LEN];
+} AppInfo;
+
+/*
  * PacketInfo represents one captured packet after basic parsing.
  * It stores source and destination IPv4 addresses, optional transport ports,
- * protocol type, packet number, packet size, and a bounded payload preview.
+ * protocol type, packet number, packet size, a direct payload view, and a
+ * bounded payload preview.
  * has_ports is non-zero only when src_port and dst_port are valid.
  */
 typedef struct {
@@ -39,7 +63,9 @@ typedef struct {
     int has_ports;
 
     int has_payload;
-    size_t payload_length;
+    const uint8_t *payload;
+    size_t payload_capture_length;
+    size_t payload_decode_length;
     size_t payload_preview_length;
     unsigned char payload_preview[PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES];
 } PacketInfo;

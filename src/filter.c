@@ -44,7 +44,7 @@ static int host_filter_matches(const AppConfig *config, const PacketInfo *info) 
 }
 
 /*
- * Binary-safe substring search over the captured payload preview.
+ * Binary-safe substring search over the bounded payload decode window.
  * Do not use strstr here: packet payloads may contain null bytes.
  */
 static int payload_contains(
@@ -84,8 +84,8 @@ static int payload_text_filter_matches(const AppConfig *config, const PacketInfo
         return 0;
     }
 
-    return payload_contains(info->payload_preview,
-                            info->payload_preview_length,
+    return payload_contains(info->payload,
+                            info->payload_decode_length,
                             config->filter_payload_text,
                             config->filter_payload_text_length);
 }
@@ -102,8 +102,8 @@ static int payload_hex_filter_matches(const AppConfig *config, const PacketInfo 
         return 0;
     }
 
-    return payload_contains(info->payload_preview,
-                            info->payload_preview_length,
+    return payload_contains(info->payload,
+                            info->payload_decode_length,
                             config->filter_payload_hex,
                             config->filter_payload_hex_length);
 }

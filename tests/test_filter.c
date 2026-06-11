@@ -117,6 +117,9 @@ static void test_filter_packet_matches_payload_text(void) {
 
     config_init_defaults(&config);
     info.has_payload = 1;
+    info.payload = info.payload_preview;
+    info.payload_capture_length = 9;
+    info.payload_decode_length = 9;
     info.payload_preview_length = 9;
     memcpy(info.payload_preview, "GET /test", 9);
 
@@ -136,6 +139,9 @@ static void test_filter_packet_matches_payload_hex(void) {
 
     config_init_defaults(&config);
     info.has_payload = 1;
+    info.payload = info.payload_preview;
+    info.payload_capture_length = 4;
+    info.payload_decode_length = 4;
     info.payload_preview_length = 4;
     info.payload_preview[0] = 0xde;
     info.payload_preview[1] = 0xad;

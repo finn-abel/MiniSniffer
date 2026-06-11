@@ -14,6 +14,20 @@ static void test_config_defaults_capture_options(void) {
     assert(config.stats_mode == 0);
 }
 
+static void test_config_defaults_app_decode_options(void) {
+    AppConfig config;
+
+    config_init_defaults(&config);
+
+    assert(config.decode_app == false);
+    assert(config.reassemble == false);
+    assert(config.payload_decode_bytes == PACKETSCOPE_DEFAULT_PAYLOAD_DECODE_BYTES);
+    assert(config.payload_preview_bytes == PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES);
+    assert(config.max_flows == PACKETSCOPE_DEFAULT_MAX_FLOWS);
+    assert(config.stream_buffer_bytes == PACKETSCOPE_DEFAULT_STREAM_BUFFER_BYTES);
+    assert(config.flow_timeout_seconds == PACKETSCOPE_DEFAULT_FLOW_TIMEOUT_SECONDS);
+}
+
 static void test_config_defaults_protocol_filter(void) {
     AppConfig config;
 
@@ -56,7 +70,6 @@ static void test_config_defaults_payload_options(void) {
     config_init_defaults(&config);
 
     assert(config.payload_display_enabled == 0);
-    assert(config.payload_preview_bytes == PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES);
     assert(config.filter_payload_text_enabled == 0);
     assert(config.filter_payload_text_length == 0);
     assert(config.filter_payload_hex_enabled == 0);
@@ -69,6 +82,7 @@ static void test_config_init_defaults_rejects_null_input(void) {
 
 int main(void) {
     test_config_defaults_capture_options();
+    test_config_defaults_app_decode_options();
     test_config_defaults_protocol_filter();
     test_config_defaults_port_filter();
     test_config_defaults_host_filter();

@@ -92,9 +92,9 @@ void packet_info_print_payload(const PacketInfo *info, size_t preview_limit) {
         limit = preview_limit;
     }
 
-    printf("      payload length=%zu preview=%zu", info->payload_length, limit);
-    if (info->payload_length > limit) {
-        printf("/%zu", info->payload_length);
+    printf("      payload length=%zu preview=%zu", info->payload_capture_length, limit);
+    if (info->payload_capture_length > limit) {
+        printf("/%zu", info->payload_capture_length);
     }
     printf("\n");
 

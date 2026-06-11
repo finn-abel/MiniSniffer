@@ -51,6 +51,12 @@ int main(int argc, char **argv) {
         printf("Max packets: %d\n", config.max_packets);
     }
     printf("Stats mode: %s\n", config.stats_mode != 0 ? "enabled" : "disabled");
+    printf("App decoding: %s\n", config.decode_app ? "enabled" : "disabled");
+    printf("TCP reassembly: %s\n", config.reassemble ? "enabled" : "disabled");
+    printf("Payload decode cap: %zu bytes\n", config.payload_decode_bytes);
+    printf("Max flows: %zu\n", config.max_flows);
+    printf("Stream buffer cap: %zu bytes\n", config.stream_buffer_bytes);
+    printf("Flow timeout: %u seconds\n", (unsigned int)config.flow_timeout_seconds);
 
     if (config.filter_protocol_enabled != 0) {
         printf("Protocol filter: %s\n", protocol_to_string(config.filter_protocol));

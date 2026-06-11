@@ -38,7 +38,9 @@ static PacketInfo make_icmp_packet(void) {
 static PacketInfo make_payload_packet(void) {
     PacketInfo info = make_tcp_packet();
 
-    info.payload_length = 5;
+    info.payload = info.payload_preview;
+    info.payload_capture_length = 5;
+    info.payload_decode_length = 5;
     info.payload_preview_length = 5;
     info.has_payload = 1;
     memcpy(info.payload_preview, "GET /", 5);

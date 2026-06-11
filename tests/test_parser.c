@@ -75,7 +75,9 @@ static void test_parser_parse_packet_extracts_tcp_payload_preview(void) {
     assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
     assert(info.protocol == PROTO_TCP);
     assert(info.has_payload == 1);
-    assert(info.payload_length == 5);
+    assert(info.payload == packet + sizeof(packet) - 5);
+    assert(info.payload_capture_length == 5);
+    assert(info.payload_decode_length == 5);
     assert(info.payload_preview_length == 5);
     assert(memcmp(info.payload_preview, "GET /", 5) == 0);
 }

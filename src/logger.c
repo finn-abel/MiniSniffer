@@ -144,7 +144,7 @@ void logger_write(const PacketInfo *info) {
         }
 
         /* Quote payload preview fields so spaces and punctuation remain intact. */
-        fprintf(log_file, "%zu,%zu,\"", info->size, info->payload_length);
+        fprintf(log_file, "%zu,%zu,\"", info->size, info->payload_capture_length);
         write_payload_hex(log_file, info);
         fprintf(log_file, "\",\"");
         write_payload_ascii(log_file, info);

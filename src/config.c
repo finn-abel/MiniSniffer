@@ -12,6 +12,13 @@ void config_init_defaults(AppConfig *config) {
 
     /* Empty interface means "choose the default device" at capture setup time. */
     config->interface_name[0] = '\0';
+    config->decode_app = false;
+    config->reassemble = false;
+    config->payload_decode_bytes = PACKETSCOPE_DEFAULT_PAYLOAD_DECODE_BYTES;
+    config->payload_preview_bytes = PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES;
+    config->max_flows = PACKETSCOPE_DEFAULT_MAX_FLOWS;
+    config->stream_buffer_bytes = PACKETSCOPE_DEFAULT_STREAM_BUFFER_BYTES;
+    config->flow_timeout_seconds = PACKETSCOPE_DEFAULT_FLOW_TIMEOUT_SECONDS;
     config->max_packets = 0;
     config->stats_mode = 0;
     config->filter_protocol_enabled = 0;
@@ -25,7 +32,6 @@ void config_init_defaults(AppConfig *config) {
     config->filter_payload_hex_enabled = 0;
     config->filter_payload_hex_length = 0;
     config->payload_display_enabled = 0;
-    config->payload_preview_bytes = PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES;
     config->logging_enabled = 0;
     config->log_path[0] = '\0';
 }
