@@ -15,6 +15,7 @@ and can report capture statistics when the run completes.
 - Bounded packet payload inspection
 - Literal text and hex payload filters
 - Packet-local HTTP, DNS, and TLS ClientHello metadata decoding
+- Bounded TCP stream reassembly for HTTP, DNS-over-TCP, and TLS ClientHello metadata
 - Application metadata filters
 - CSV logging for displayed packets
 - Summary statistics for displayed packets
@@ -83,10 +84,11 @@ Usage: ./PacketScope [--help] [--interface <name>] [--count <number>]
        [--protocol <tcp|udp|icmp|other>] [--port <number>]
        [--host <ipv4>] [--payload] [--payload-bytes <number>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
-       [--decode-app] [--app <http|dns|tls>] [--http-host <host>]
-       [--http-method <method>] [--dns-query <name>] [--dns-type <type>]
-       [--tls-sni <host>] [--tls-alpn <protocol>]
-       [--stats]
+       [--decode-app] [--reassemble] [--max-flows <number>]
+       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]
+       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]
+       [--dns-query <name>] [--dns-type <type>] [--tls-sni <host>]
+       [--tls-alpn <protocol>] [--stats]
 ```
 
 ## Options
@@ -104,6 +106,10 @@ Usage: ./PacketScope [--help] [--interface <name>] [--count <number>]
 | `--payload-contains <text>` | Display only packets whose bounded payload decode window contains the literal text. |
 | `--payload-hex <hex>` | Display only packets whose bounded payload decode window contains the byte pattern. |
 | `--decode-app` | Decode packet-local HTTP, DNS, and TLS ClientHello metadata. |
+| `--reassemble` | Enable bounded TCP stream reassembly for app decoding. Requires `--decode-app`. |
+| `--max-flows <number>` | Set the maximum number of tracked flows for reassembly. Default is 4096. Requires `--reassemble`. |
+| `--stream-buffer-bytes <number>` | Set the per-direction TCP stream buffer cap. Default is 65536 bytes. Requires `--reassemble`. |
+| `--flow-timeout <seconds>` | Evict flows idle for at least this many seconds. Default is 60 seconds. Requires `--reassemble`. |
 | `--app <http|dns|tls>` | Display only packets with decoded app metadata for the selected protocol. Requires `--decode-app`. |
 | `--http-host <host>` | Display only decoded HTTP packets with a matching Host header. Requires `--decode-app`. |
 | `--http-method <method>` | Display only decoded HTTP requests with a matching method. Requires `--decode-app`. |
@@ -183,6 +189,7 @@ Application filter examples:
 sudo ./PacketScope --decode-app --app http --http-host example.com
 sudo ./PacketScope --decode-app --app dns --dns-query example.com --dns-type A
 sudo ./PacketScope --decode-app --app tls --tls-sni example.com --tls-alpn h2
+sudo ./PacketScope --decode-app --reassemble --app tls --tls-sni example.com --count 5
 ```
 
 ## Output
@@ -242,6 +249,11 @@ per-direction buffers. HTTP headers, TLS ClientHello records, and DNS-over-TCP
 frames can be decoded after they span multiple in-order or simply reordered TCP
 segments. Data that exceeds configured memory caps is dropped instead of growing
 without bound.
+
+Flow tracking is bounded by `--max-flows`. When the table is full after idle
+eviction, PacketScope evicts the least recently seen flow to preserve the memory
+cap. Each direction has its own fixed stream buffer; data that cannot fit is
+dropped rather than reallocating the buffer.
 
 ## CSV Logging
 
@@ -305,8 +317,15 @@ make test
 ```
 
 The test target builds and runs tests for config parsing, CLI parsing, packet
-parsing, filtering, logging, stats, and basic capture validation. It also runs
-`make clean` after the tests complete.
+parsing, filtering, flow tracking, TCP reassembly, stream buffering,
+application decoders, CSV logging, stats, and basic capture validation. It also
+runs `make clean` after the tests complete.
+
+Run the same suite with AddressSanitizer and UndefinedBehaviorSanitizer:
+
+```sh
+make test CFLAGS='-Wall -Wextra -Werror -std=c11 -g -fsanitize=address,undefined -fno-omit-frame-pointer'
+```
 
 Rebuild the executable after running tests:
 
@@ -361,7 +380,8 @@ include `en0` for Wi-Fi or Ethernet, depending on hardware and configuration.
 
 PacketScope validates common input mistakes before capture starts, including
 unknown options, missing option values, invalid protocols, invalid ports,
-invalid IPv4 hosts, and log files that cannot be opened.
+invalid IPv4 hosts, invalid app filter combinations, invalid reassembly limits,
+and log files that cannot be opened.
 
 Examples:
 
@@ -372,6 +392,9 @@ Examples:
 ./PacketScope --host 999.1.1.1
 ./PacketScope --payload-bytes 999
 ./PacketScope --payload-hex abc
+./PacketScope --reassemble
+./PacketScope --decode-app --max-flows 0
+./PacketScope --decode-app --stream-buffer-bytes 0
 ./PacketScope --interface fake0
 ./PacketScope --log /bad/path/file.csv
 ```
@@ -391,15 +414,21 @@ Important modules:
 - `src/cli.c` parses command-line options into runtime configuration.
 - `src/capture.c` selects an interface, opens libpcap, and runs capture.
 - `src/parser.c` parses Ethernet/IPv4 packet metadata.
-- `src/filter.c` applies protocol, port, and host filters.
-- `src/logger.c` writes displayed packets to CSV.
+- `src/filters.c` applies protocol, port, host, payload, and app filters.
+- `src/app_decoder.c` dispatches packet-local and stream app decoders.
+- `src/tcp_reassembly.c` and `src/stream_buffer.c` handle bounded stream assembly.
+- `src/flow.c` tracks bounded flow state and app classification.
+- `src/csv_logger.c` writes displayed packets to CSV.
 - `src/stats.c` tracks displayed packet counters.
 
 ## Limitations
 
 - PacketScope currently parses Ethernet IPv4 packets.
 - TCP and UDP ports are parsed only when enough header bytes were captured.
-- Payload inspection is bounded to the first 256 captured payload bytes.
+- Payload display and legacy payload CSV output are bounded to 256 bytes.
+- Payload filters and packet-local app decoders inspect a bounded decode window.
 - IPv6 packet parsing is not implemented.
-- Protocol-aware application decoding is not implemented.
+- App decoding is intentionally limited to cleartext HTTP/1.x metadata, DNS
+  query metadata, and TLS ClientHello metadata.
+- TCP reassembly is conservative and bounded; it is not a full TCP stack.
 - Live capture behavior depends on libpcap support and local OS permissions.
