@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("PacketScope starting...\n");
+    printf("MiniSniffer starting...\n");
     printf("Interface: %s\n",
            config.interface_name[0] == '\0' ? "default" : config.interface_name);
     if (config.max_packets == 0) {

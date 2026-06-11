@@ -14,7 +14,7 @@ static void test_app_http_decode_request(void) {
     assert(strcmp(info.http_path, "/index.html") == 0);
     assert(strcmp(info.http_version, "HTTP/1.1") == 0);
     assert(strcmp(info.http_host, "example.com") == 0);
-    assert(strcmp(info.http_user_agent, "PacketScopeTest") == 0);
+    assert(strcmp(info.http_user_agent, "MiniSnifferTest") == 0);
 }
 
 static void test_app_http_decode_response(void) {

@@ -9,7 +9,7 @@
 #include "tcp_reassembly.h"
 
 /*
- * PacketScope currently tracks IPv4 flows only because PacketInfo stores
+ * MiniSniffer currently tracks IPv4 flows only because PacketInfo stores
  * parsed endpoints as IPv4 text. The host-order integer form makes flow key
  * comparison independent of presentation formatting.
  */

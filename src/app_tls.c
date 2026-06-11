@@ -74,7 +74,7 @@ static void copy_text(char *destination, size_t destination_size, const uint8_t 
 }
 
 /*
- * Server Name extension contains a list; PacketScope records the first host
+ * Server Name extension contains a list; MiniSniffer records the first host
  * name entry and ignores other name types.
  */
 static int parse_sni_extension(const uint8_t *data, size_t length, AppInfo *out) {
@@ -248,7 +248,7 @@ static AppDecodeResult parse_client_hello_body(
 
 /*
  * Decode only TLS handshake records carrying ClientHello. Other TLS records are
- * not errors; they are simply not useful for the plaintext metadata PacketScope
+ * not errors; they are simply not useful for the plaintext metadata MiniSniffer
  * is allowed to inspect.
  */
 AppDecodeResult app_tls_decode_client_hello(

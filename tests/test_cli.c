@@ -7,7 +7,7 @@
 
 static void test_cli_parse_args_accepts_no_args(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope"};
+    char *argv[] = {"MiniSniffer"};
 
     config_init_defaults(&config);
 
@@ -16,7 +16,7 @@ static void test_cli_parse_args_accepts_no_args(void) {
 
 static void test_cli_parse_args_accepts_help(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--help"};
+    char *argv[] = {"MiniSniffer", "--help"};
 
     config_init_defaults(&config);
 
@@ -25,7 +25,7 @@ static void test_cli_parse_args_accepts_help(void) {
 
 static void test_cli_parse_args_sets_interface(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--interface", "en0"};
+    char *argv[] = {"MiniSniffer", "--interface", "en0"};
 
     config_init_defaults(&config);
 
@@ -35,7 +35,7 @@ static void test_cli_parse_args_sets_interface(void) {
 
 static void test_cli_parse_args_sets_count(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--count", "10"};
+    char *argv[] = {"MiniSniffer", "--count", "10"};
 
     config_init_defaults(&config);
 
@@ -45,7 +45,7 @@ static void test_cli_parse_args_sets_count(void) {
 
 static void test_cli_parse_args_sets_protocol(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--protocol", "tcp"};
+    char *argv[] = {"MiniSniffer", "--protocol", "tcp"};
 
     config_init_defaults(&config);
 
@@ -56,7 +56,7 @@ static void test_cli_parse_args_sets_protocol(void) {
 
 static void test_cli_parse_args_sets_port(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--port", "443"};
+    char *argv[] = {"MiniSniffer", "--port", "443"};
 
     config_init_defaults(&config);
 
@@ -67,7 +67,7 @@ static void test_cli_parse_args_sets_port(void) {
 
 static void test_cli_parse_args_sets_host(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--host", "8.8.8.8"};
+    char *argv[] = {"MiniSniffer", "--host", "8.8.8.8"};
 
     config_init_defaults(&config);
 
@@ -78,7 +78,7 @@ static void test_cli_parse_args_sets_host(void) {
 
 static void test_cli_parse_args_sets_log(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--log", "packets.csv"};
+    char *argv[] = {"MiniSniffer", "--log", "packets.csv"};
 
     config_init_defaults(&config);
 
@@ -89,7 +89,7 @@ static void test_cli_parse_args_sets_log(void) {
 
 static void test_cli_parse_args_sets_stats(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--stats"};
+    char *argv[] = {"MiniSniffer", "--stats"};
 
     config_init_defaults(&config);
 
@@ -99,7 +99,7 @@ static void test_cli_parse_args_sets_stats(void) {
 
 static void test_cli_parse_args_sets_payload_display(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--payload", "--payload-bytes", "32"};
+    char *argv[] = {"MiniSniffer", "--payload", "--payload-bytes", "32"};
 
     config_init_defaults(&config);
 
@@ -110,7 +110,7 @@ static void test_cli_parse_args_sets_payload_display(void) {
 
 static void test_cli_parse_args_sets_payload_text_filter(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--payload-contains", "GET "};
+    char *argv[] = {"MiniSniffer", "--payload-contains", "GET "};
 
     config_init_defaults(&config);
 
@@ -122,7 +122,7 @@ static void test_cli_parse_args_sets_payload_text_filter(void) {
 
 static void test_cli_parse_args_sets_payload_hex_filter(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--payload-hex", "47 45 54"};
+    char *argv[] = {"MiniSniffer", "--payload-hex", "47 45 54"};
 
     config_init_defaults(&config);
 
@@ -137,7 +137,7 @@ static void test_cli_parse_args_sets_payload_hex_filter(void) {
 static void test_cli_parse_args_sets_app_decode_options(void) {
     AppConfig config;
     char *argv[] = {
-        "PacketScope",
+        "MiniSniffer",
         "--decode-app",
         "--reassemble",
         "--max-flows",
@@ -160,19 +160,19 @@ static void test_cli_parse_args_sets_app_decode_options(void) {
 
 static void test_cli_parse_args_accepts_supported_app_examples(void) {
     AppConfig config;
-    char *decode_app[] = {"PacketScope", "--decode-app"};
-    char *app_dns[] = {"PacketScope", "--decode-app", "--app", "dns"};
+    char *decode_app[] = {"MiniSniffer", "--decode-app"};
+    char *app_dns[] = {"MiniSniffer", "--decode-app", "--app", "dns"};
     char *http_host[] = {
-        "PacketScope", "--decode-app", "--app", "http", "--http-host", "example.com"
+        "MiniSniffer", "--decode-app", "--app", "http", "--http-host", "example.com"
     };
     char *tls_sni[] = {
-        "PacketScope", "--decode-app", "--app", "tls", "--tls-sni", "example.com"
+        "MiniSniffer", "--decode-app", "--app", "tls", "--tls-sni", "example.com"
     };
     char *reassembled_tls_sni[] = {
-        "PacketScope", "--decode-app", "--reassemble", "--tls-sni", "example.com"
+        "MiniSniffer", "--decode-app", "--reassemble", "--tls-sni", "example.com"
     };
     char *stream_buffer[] = {
-        "PacketScope", "--decode-app", "--reassemble", "--stream-buffer-bytes", "65536"
+        "MiniSniffer", "--decode-app", "--reassemble", "--stream-buffer-bytes", "65536"
     };
 
     config_init_defaults(&config);
@@ -207,7 +207,7 @@ static void test_cli_parse_args_accepts_supported_app_examples(void) {
 static void test_cli_parse_args_sets_app_filters(void) {
     AppConfig config;
     char *argv[] = {
-        "PacketScope",
+        "MiniSniffer",
         "--decode-app",
         "--app",
         "http",
@@ -247,7 +247,7 @@ static void test_cli_parse_args_sets_app_filters(void) {
 static void test_cli_parse_args_accepts_combined_filters(void) {
     AppConfig config;
     char *argv[] = {
-        "PacketScope", "--protocol", "tcp", "--port", "443", "--count", "10"
+        "MiniSniffer", "--protocol", "tcp", "--port", "443", "--count", "10"
     };
 
     config_init_defaults(&config);
@@ -262,7 +262,7 @@ static void test_cli_parse_args_accepts_combined_filters(void) {
 
 static void test_cli_parse_args_rejects_unknown_flag(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--badflag"};
+    char *argv[] = {"MiniSniffer", "--badflag"};
 
     config_init_defaults(&config);
 
@@ -271,7 +271,7 @@ static void test_cli_parse_args_rejects_unknown_flag(void) {
 
 static void test_cli_parse_args_rejects_missing_value(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--interface"};
+    char *argv[] = {"MiniSniffer", "--interface"};
 
     config_init_defaults(&config);
 
@@ -280,7 +280,7 @@ static void test_cli_parse_args_rejects_missing_value(void) {
 
 static void test_cli_parse_args_rejects_fake_protocol(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--protocol", "fake"};
+    char *argv[] = {"MiniSniffer", "--protocol", "fake"};
 
     config_init_defaults(&config);
 
@@ -289,7 +289,7 @@ static void test_cli_parse_args_rejects_fake_protocol(void) {
 
 static void test_cli_parse_args_rejects_invalid_port(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--port", "99999"};
+    char *argv[] = {"MiniSniffer", "--port", "99999"};
 
     config_init_defaults(&config);
 
@@ -298,7 +298,7 @@ static void test_cli_parse_args_rejects_invalid_port(void) {
 
 static void test_cli_parse_args_rejects_zero_count(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--count", "0"};
+    char *argv[] = {"MiniSniffer", "--count", "0"};
 
     config_init_defaults(&config);
 
@@ -307,7 +307,7 @@ static void test_cli_parse_args_rejects_zero_count(void) {
 
 static void test_cli_parse_args_rejects_long_host(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--host", "255.255.255.2555"};
+    char *argv[] = {"MiniSniffer", "--host", "255.255.255.2555"};
 
     config_init_defaults(&config);
 
@@ -316,7 +316,7 @@ static void test_cli_parse_args_rejects_long_host(void) {
 
 static void test_cli_parse_args_rejects_invalid_host(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--host", "999.1.1.1"};
+    char *argv[] = {"MiniSniffer", "--host", "999.1.1.1"};
 
     config_init_defaults(&config);
 
@@ -325,8 +325,8 @@ static void test_cli_parse_args_rejects_invalid_host(void) {
 
 static void test_cli_parse_args_rejects_invalid_payload_options(void) {
     AppConfig config;
-    char *payload_bytes[] = {"PacketScope", "--payload-bytes", "999"};
-    char *payload_hex[] = {"PacketScope", "--payload-hex", "abc"};
+    char *payload_bytes[] = {"MiniSniffer", "--payload-bytes", "999"};
+    char *payload_hex[] = {"MiniSniffer", "--payload-hex", "abc"};
 
     config_init_defaults(&config);
     assert(cli_parse_args(3, payload_bytes, &config) != 0);
@@ -337,20 +337,20 @@ static void test_cli_parse_args_rejects_invalid_payload_options(void) {
 
 static void test_cli_parse_args_rejects_invalid_app_decode_options(void) {
     AppConfig config;
-    char *reassemble_without_decode[] = {"PacketScope", "--reassemble"};
-    char *max_flows_zero[] = {"PacketScope", "--decode-app", "--reassemble", "--max-flows", "0"};
+    char *reassemble_without_decode[] = {"MiniSniffer", "--reassemble"};
+    char *max_flows_zero[] = {"MiniSniffer", "--decode-app", "--reassemble", "--max-flows", "0"};
     char *stream_buffer_negative[] = {
-        "PacketScope", "--decode-app", "--reassemble", "--stream-buffer-bytes", "-1"
+        "MiniSniffer", "--decode-app", "--reassemble", "--stream-buffer-bytes", "-1"
     };
     char *flow_timeout_bad[] = {
-        "PacketScope", "--decode-app", "--reassemble", "--flow-timeout", "abc"
+        "MiniSniffer", "--decode-app", "--reassemble", "--flow-timeout", "abc"
     };
-    char *max_flows_without_reassemble[] = {"PacketScope", "--decode-app", "--max-flows", "10"};
+    char *max_flows_without_reassemble[] = {"MiniSniffer", "--decode-app", "--max-flows", "10"};
     char *stream_buffer_without_reassemble[] = {
-        "PacketScope", "--decode-app", "--stream-buffer-bytes", "1024"
+        "MiniSniffer", "--decode-app", "--stream-buffer-bytes", "1024"
     };
     char *flow_timeout_without_reassemble[] = {
-        "PacketScope", "--decode-app", "--flow-timeout", "10"
+        "MiniSniffer", "--decode-app", "--flow-timeout", "10"
     };
 
     config_init_defaults(&config);
@@ -377,7 +377,7 @@ static void test_cli_parse_args_rejects_invalid_app_decode_options(void) {
 
 static void test_cli_parse_args_rejects_app_filters_without_decode_app(void) {
     AppConfig config;
-    char *argv[] = {"PacketScope", "--app", "dns"};
+    char *argv[] = {"MiniSniffer", "--app", "dns"};
 
     config_init_defaults(&config);
 
@@ -386,8 +386,8 @@ static void test_cli_parse_args_rejects_app_filters_without_decode_app(void) {
 
 static void test_cli_parse_args_rejects_invalid_app_filters(void) {
     AppConfig config;
-    char *bad_app[] = {"PacketScope", "--decode-app", "--app", "smtp"};
-    char *bad_dns_type[] = {"PacketScope", "--decode-app", "--dns-type", "NOPE"};
+    char *bad_app[] = {"MiniSniffer", "--decode-app", "--app", "smtp"};
+    char *bad_dns_type[] = {"MiniSniffer", "--decode-app", "--dns-type", "NOPE"};
 
     config_init_defaults(&config);
     assert(cli_parse_args(4, bad_app, &config) != 0);

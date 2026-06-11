@@ -6,7 +6,7 @@
 static const uint8_t HTTP_GET_WITH_HOST[] =
     "GET /index.html HTTP/1.1\r\n"
     "Host: example.com\r\n"
-    "User-Agent: PacketScopeTest\r\n"
+    "User-Agent: MiniSnifferTest\r\n"
     "\r\n"
     "ignored body";
 

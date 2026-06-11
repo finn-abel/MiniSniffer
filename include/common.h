@@ -4,8 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES 256
-#define PACKETSCOPE_APP_TEXT_LEN 256
+#define MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES 256
+#define MINISNIFFER_APP_TEXT_LEN 256
 
 /*
  * Protocol describes the coarse protocol category for a packet.
@@ -30,8 +30,8 @@ typedef enum {
     APP_PROTO_TLS
 } AppProtocol;
 
-#define PACKETSCOPE_APP_SUMMARY_LEN 128
-#define PACKETSCOPE_TLS_ALPN_LEN 256
+#define MINISNIFFER_APP_SUMMARY_LEN 128
+#define MINISNIFFER_TLS_ALPN_LEN 256
 
 /*
  * AppInfo is shared by packet-local app decoding now and flow-level app
@@ -40,31 +40,31 @@ typedef enum {
  */
 typedef struct {
     AppProtocol protocol;
-    char summary[PACKETSCOPE_APP_SUMMARY_LEN];
+    char summary[MINISNIFFER_APP_SUMMARY_LEN];
 
     char http_method[16];
-    char http_path[PACKETSCOPE_APP_TEXT_LEN];
+    char http_path[MINISNIFFER_APP_TEXT_LEN];
     char http_version[16];
-    char http_host[PACKETSCOPE_APP_TEXT_LEN];
-    char http_user_agent[PACKETSCOPE_APP_TEXT_LEN];
+    char http_host[MINISNIFFER_APP_TEXT_LEN];
+    char http_user_agent[MINISNIFFER_APP_TEXT_LEN];
     uint16_t http_status_code;
-    char http_reason[PACKETSCOPE_APP_TEXT_LEN];
-    char http_content_type[PACKETSCOPE_APP_TEXT_LEN];
+    char http_reason[MINISNIFFER_APP_TEXT_LEN];
+    char http_content_type[MINISNIFFER_APP_TEXT_LEN];
 
     uint16_t dns_transaction_id;
     int dns_is_response;
     uint8_t dns_opcode;
     uint8_t dns_rcode;
     uint16_t dns_question_count;
-    char dns_query_name[PACKETSCOPE_APP_TEXT_LEN];
+    char dns_query_name[MINISNIFFER_APP_TEXT_LEN];
     uint16_t dns_query_type;
     uint16_t dns_query_class;
 
     uint16_t tls_record_version;
     uint8_t tls_handshake_type;
     uint16_t tls_client_version;
-    char tls_sni[PACKETSCOPE_APP_TEXT_LEN];
-    char tls_alpn[PACKETSCOPE_TLS_ALPN_LEN];
+    char tls_sni[MINISNIFFER_APP_TEXT_LEN];
+    char tls_alpn[MINISNIFFER_TLS_ALPN_LEN];
 } AppInfo;
 
 /*
@@ -98,7 +98,7 @@ typedef struct {
     size_t payload_capture_length;
     size_t payload_decode_length;
     size_t payload_preview_length;
-    unsigned char payload_preview[PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES];
+    unsigned char payload_preview[MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES];
 
     AppInfo app;
 } PacketInfo;

@@ -9,7 +9,7 @@
 #include "cli.h"
 
 static void print_usage(FILE *stream, const char *program_name) {
-    const char *name = program_name == NULL ? "PacketScope" : program_name;
+    const char *name = program_name == NULL ? "MiniSniffer" : program_name;
 
     /* Keep usage text in one place so errors and --help stay consistent. */
     fprintf(stream, "Usage: %s [--help] [--interface <name>] [--count <number>]\n", name);
@@ -141,7 +141,7 @@ static int fail_invalid_host(const char *program_name) {
 static int fail_invalid_payload_bytes(const char *program_name) {
     fprintf(stderr,
             "Error: payload byte preview must be between 1 and %u.\n",
-            (unsigned int)PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES);
+            (unsigned int)MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES);
     print_usage(stderr, program_name);
     return 1;
 }
@@ -149,7 +149,7 @@ static int fail_invalid_payload_bytes(const char *program_name) {
 static int fail_invalid_payload_text(const char *program_name) {
     fprintf(stderr,
             "Error: payload text filter must be between 1 and %u bytes.\n",
-            (unsigned int)PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES);
+            (unsigned int)MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES);
     print_usage(stderr, program_name);
     return 1;
 }
@@ -157,7 +157,7 @@ static int fail_invalid_payload_text(const char *program_name) {
 static int fail_invalid_payload_hex(const char *program_name) {
     fprintf(stderr,
             "Error: payload hex filter must contain 1 to %u bytes of hex.\n",
-            (unsigned int)PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES);
+            (unsigned int)MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES);
     print_usage(stderr, program_name);
     return 1;
 }
@@ -294,7 +294,7 @@ static int parse_payload_hex_pattern(
             /* Store the first nibble until the second nibble completes a byte. */
             high_nibble = value;
         } else {
-            if (count >= PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES) {
+            if (count >= MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES) {
                 return 1;
             }
             bytes[count] = (unsigned char)((high_nibble << 4) | value);
@@ -315,7 +315,7 @@ static int parse_payload_hex_pattern(
 }
 
 int cli_parse_args(int argc, char **argv, AppConfig *config) {
-    const char *program_name = argc > 0 ? argv[0] : "PacketScope";
+    const char *program_name = argc > 0 ? argv[0] : "MiniSniffer";
     bool max_flows_was_set = false;
     bool stream_buffer_was_set = false;
     bool flow_timeout_was_set = false;
@@ -415,7 +415,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
                 return fail_with_error(program_name, "--payload-bytes requires a value.");
             }
             if (parse_positive_int(argv[i + 1], &preview_bytes) != 0 ||
-                preview_bytes > PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES) {
+                preview_bytes > MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES) {
                 return fail_invalid_payload_bytes(program_name);
             }
             config->payload_preview_bytes = (size_t)preview_bytes;
@@ -432,7 +432,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             }
 
             length = strlen(argv[i + 1]);
-            if (length == 0 || length > PACKETSCOPE_MAX_PAYLOAD_PATTERN_BYTES) {
+            if (length == 0 || length > MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES) {
                 return fail_invalid_payload_text(program_name);
             }
             memcpy(config->filter_payload_text, argv[i + 1], length);

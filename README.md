@@ -1,6 +1,6 @@
-# PacketScope
+# MiniSniffer
 
-PacketScope is a small C packet sniffer and network analyzer built on
+MiniSniffer is a small C packet sniffer and network analyzer built on
 libpcap. It captures live packets, parses Ethernet/IPv4 traffic, applies
 simple filters, prints readable packet summaries, optionally writes CSV logs,
 and can report capture statistics when the run completes.
@@ -34,7 +34,7 @@ On macOS with Homebrew:
 brew install libpcap
 ```
 
-Packet capture usually requires elevated permissions. On macOS, run PacketScope
+Packet capture usually requires elevated permissions. On macOS, run MiniSniffer
 with `sudo` or configure BPF capture permissions for your account.
 
 ## Build
@@ -43,44 +43,44 @@ with `sudo` or configure BPF capture permissions for your account.
 make
 ```
 
-This creates the `PacketScope` executable in the project root.
+This creates the `MiniSniffer` executable in the project root.
 
 ## Quick Start
 
 Capture five displayed packets on the automatically selected interface:
 
 ```sh
-sudo ./PacketScope --count 5
+sudo ./MiniSniffer --count 5
 ```
 
 Capture on a specific interface:
 
 ```sh
-sudo ./PacketScope --interface en0 --count 5
+sudo ./MiniSniffer --interface en0 --count 5
 ```
 
 Capture TCP packets and print stats at the end:
 
 ```sh
-sudo ./PacketScope --protocol tcp --count 20 --stats
+sudo ./MiniSniffer --protocol tcp --count 20 --stats
 ```
 
 Write displayed packets to a CSV file:
 
 ```sh
-sudo ./PacketScope --count 10 --log packets.csv
+sudo ./MiniSniffer --count 10 --log packets.csv
 ```
 
 Inspect payload previews and filter for HTTP request bytes:
 
 ```sh
-sudo ./PacketScope --protocol tcp --payload --payload-bytes 80 --payload-contains "GET "
+sudo ./MiniSniffer --protocol tcp --payload --payload-bytes 80 --payload-contains "GET "
 ```
 
 ## Usage
 
 ```text
-Usage: ./PacketScope [--help] [--interface <name>] [--count <number>]
+Usage: ./MiniSniffer [--help] [--interface <name>] [--count <number>]
        [--protocol <tcp|udp|icmp|other>] [--port <number>]
        [--host <ipv4>] [--payload] [--payload-bytes <number>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
@@ -125,7 +125,7 @@ stops after ten displayed TCP packets, not after ten raw packets.
 
 ## Interface Selection
 
-When `--interface` is omitted, PacketScope enumerates libpcap devices and
+When `--interface` is omitted, MiniSniffer enumerates libpcap devices and
 chooses a practical default. On macOS it prefers normal non-loopback IPv4
 interfaces such as `en0` and avoids common internal or tunnel interfaces such
 as `ap*`, `awdl*`, `llw*`, and `utun*`.
@@ -134,7 +134,7 @@ If automatic selection does not choose the interface you want, pass the
 interface explicitly:
 
 ```sh
-sudo ./PacketScope --interface en0 --count 5
+sudo ./MiniSniffer --interface en0 --count 5
 ```
 
 ## Filters
@@ -145,13 +145,13 @@ must match before a packet is printed, logged, counted, or included in stats.
 Examples:
 
 ```sh
-sudo ./PacketScope --protocol tcp --count 10
-sudo ./PacketScope --protocol udp --count 10
-sudo ./PacketScope --protocol icmp --count 5
-sudo ./PacketScope --port 443 --count 10
-sudo ./PacketScope --protocol tcp --port 443 --count 10
-sudo ./PacketScope --host 8.8.8.8 --count 10
-sudo ./PacketScope --protocol tcp --port 443 --host 142.250.190.14 --count 10
+sudo ./MiniSniffer --protocol tcp --count 10
+sudo ./MiniSniffer --protocol udp --count 10
+sudo ./MiniSniffer --protocol icmp --count 5
+sudo ./MiniSniffer --port 443 --count 10
+sudo ./MiniSniffer --protocol tcp --port 443 --count 10
+sudo ./MiniSniffer --host 8.8.8.8 --count 10
+sudo ./MiniSniffer --protocol tcp --port 443 --host 142.250.190.14 --count 10
 ```
 
 Port filters apply only to packets with TCP or UDP ports. ICMP and other
@@ -164,13 +164,13 @@ you also want to print or log previews.
 Text payload filter:
 
 ```sh
-sudo ./PacketScope --protocol tcp --payload-contains "Host:"
+sudo ./MiniSniffer --protocol tcp --payload-contains "Host:"
 ```
 
 Hex payload filter:
 
 ```sh
-sudo ./PacketScope --payload-hex "47 45 54 20"
+sudo ./MiniSniffer --payload-hex "47 45 54 20"
 ```
 
 Hex patterns may include spaces, colons, or hyphens as separators. The example
@@ -180,21 +180,21 @@ Application filters use decoded packet-local metadata when `--reassemble` is
 off. If app metadata is absent or incomplete, app filters fail for that packet.
 With `--reassemble`, app filters use flow classification instead: packets before
 classification do not match, and future packets in a matching classified flow
-pass. PacketScope does not buffer or replay earlier packets after a flow becomes
+pass. MiniSniffer does not buffer or replay earlier packets after a flow becomes
 classified.
 
 Application filter examples:
 
 ```sh
-sudo ./PacketScope --decode-app --app http --http-host example.com
-sudo ./PacketScope --decode-app --app dns --dns-query example.com --dns-type A
-sudo ./PacketScope --decode-app --app tls --tls-sni example.com --tls-alpn h2
-sudo ./PacketScope --decode-app --reassemble --app tls --tls-sni example.com --count 5
+sudo ./MiniSniffer --decode-app --app http --http-host example.com
+sudo ./MiniSniffer --decode-app --app dns --dns-query example.com --dns-type A
+sudo ./MiniSniffer --decode-app --app tls --tls-sni example.com --tls-alpn h2
+sudo ./MiniSniffer --decode-app --reassemble --app tls --tls-sni example.com --count 5
 ```
 
 ## Output
 
-PacketScope prints one line for each displayed packet. TCP and UDP packets
+MiniSniffer prints one line for each displayed packet. TCP and UDP packets
 include ports:
 
 ```text
@@ -207,7 +207,7 @@ Packets without ports omit them:
 [002] ICMP 192.168.1.25 -> 8.8.8.8 size=98
 ```
 
-With `--payload`, PacketScope prints a bounded payload preview below each
+With `--payload`, MiniSniffer prints a bounded payload preview below each
 displayed packet:
 
 ```text
@@ -251,7 +251,7 @@ segments. Data that exceeds configured memory caps is dropped instead of growing
 without bound.
 
 Flow tracking is bounded by `--max-flows`. When the table is full after idle
-eviction, PacketScope evicts the least recently seen flow to preserve the memory
+eviction, MiniSniffer evicts the least recently seen flow to preserve the memory
 cap. Each direction has its own fixed stream buffer; data that cannot fit is
 dropped rather than reallocating the buffer.
 
@@ -260,7 +260,7 @@ dropped rather than reallocating the buffer.
 Use `--log <file>` to write displayed packets to CSV:
 
 ```sh
-sudo ./PacketScope --count 25 --log packets.csv
+sudo ./MiniSniffer --count 25 --log packets.csv
 ```
 
 CSV columns:
@@ -293,7 +293,7 @@ flow metadata, or `none` when no app metadata is available.
 Use `--stats` to print a summary after capture completes:
 
 ```sh
-sudo ./PacketScope --count 50 --stats
+sudo ./MiniSniffer --count 50 --stats
 ```
 
 The stats summary includes:
@@ -354,7 +354,7 @@ cannot open BPF device: Permission denied
 Run with `sudo`:
 
 ```sh
-sudo ./PacketScope --count 5
+sudo ./MiniSniffer --count 5
 ```
 
 ### Wrong interface selected
@@ -362,7 +362,7 @@ sudo ./PacketScope --count 5
 Pass the interface explicitly:
 
 ```sh
-sudo ./PacketScope --interface en0 --count 5
+sudo ./MiniSniffer --interface en0 --count 5
 ```
 
 ### Interface not found
@@ -378,7 +378,7 @@ include `en0` for Wi-Fi or Ethernet, depending on hardware and configuration.
 
 ### Invalid CLI input
 
-PacketScope validates common input mistakes before capture starts, including
+MiniSniffer validates common input mistakes before capture starts, including
 unknown options, missing option values, invalid protocols, invalid ports,
 invalid IPv4 hosts, invalid app filter combinations, invalid reassembly limits,
 and log files that cannot be opened.
@@ -386,24 +386,24 @@ and log files that cannot be opened.
 Examples:
 
 ```sh
-./PacketScope --port
-./PacketScope --port abc
-./PacketScope --protocol fake
-./PacketScope --host 999.1.1.1
-./PacketScope --payload-bytes 999
-./PacketScope --payload-hex abc
-./PacketScope --reassemble
-./PacketScope --decode-app --max-flows 0
-./PacketScope --decode-app --stream-buffer-bytes 0
-./PacketScope --interface fake0
-./PacketScope --log /bad/path/file.csv
+./MiniSniffer --port
+./MiniSniffer --port abc
+./MiniSniffer --protocol fake
+./MiniSniffer --host 999.1.1.1
+./MiniSniffer --payload-bytes 999
+./MiniSniffer --payload-hex abc
+./MiniSniffer --reassemble
+./MiniSniffer --decode-app --max-flows 0
+./MiniSniffer --decode-app --stream-buffer-bytes 0
+./MiniSniffer --interface fake0
+./MiniSniffer --log /bad/path/file.csv
 ```
 
 ## Project Layout
 
 ```text
 include/          Public headers
-src/              PacketScope implementation
+src/              MiniSniffer implementation
 tests/            Unit tests
 Makefile          Build, test, and clean targets
 README.md         Project documentation
@@ -423,7 +423,7 @@ Important modules:
 
 ## Limitations
 
-- PacketScope currently parses Ethernet IPv4 packets.
+- MiniSniffer currently parses Ethernet IPv4 packets.
 - TCP and UDP ports are parsed only when enough header bytes were captured.
 - Payload display and legacy payload CSV output are bounded to 256 bytes.
 - Payload filters and packet-local app decoders inspect a bounded decode window.

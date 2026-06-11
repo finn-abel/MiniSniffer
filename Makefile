@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -Werror -std=c11 -g
 INCLUDES = -Iinclude
 LDLIBS = -lpcap
 
-TARGET = PacketScope
+TARGET = MiniSniffer
 
 # Add normal project source files here.
 SRC = src/main.c src/config.c src/cli.c src/common.c src/capture.c src/parser.c src/filter.c src/filters.c src/flow.c src/stream_buffer.c src/tcp_reassembly.c src/logger.c src/csv_logger.c src/output.c src/stats.c src/app_decoder.c src/app_http.c src/app_dns.c src/app_tls.c src/byte_reader.c

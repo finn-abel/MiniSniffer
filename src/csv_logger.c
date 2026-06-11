@@ -8,7 +8,7 @@
 static FILE *log_file = NULL;
 static bool app_columns_enabled = false;
 static bool payload_columns_enabled = false;
-static size_t payload_logging_limit = PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES;
+static size_t payload_logging_limit = MINISNIFFER_DEFAULT_PAYLOAD_PREVIEW_BYTES;
 
 /*
  * Empty string keeps UNKNOWN app values as blank CSV fields rather than a
@@ -144,8 +144,8 @@ int csv_logger_open(
     app_columns_enabled = enable_app_columns;
     payload_columns_enabled = enable_payload_columns;
     payload_logging_limit = payload_preview_limit;
-    if (payload_logging_limit > PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES) {
-        payload_logging_limit = PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES;
+    if (payload_logging_limit > MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES) {
+        payload_logging_limit = MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES;
     }
 
     log_file = fopen(path, "w");

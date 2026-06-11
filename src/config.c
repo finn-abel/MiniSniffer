@@ -14,11 +14,11 @@ void config_init_defaults(AppConfig *config) {
     config->interface_name[0] = '\0';
     config->decode_app = false;
     config->reassemble = false;
-    config->payload_decode_bytes = PACKETSCOPE_DEFAULT_PAYLOAD_DECODE_BYTES;
-    config->payload_preview_bytes = PACKETSCOPE_DEFAULT_PAYLOAD_PREVIEW_BYTES;
-    config->max_flows = PACKETSCOPE_DEFAULT_MAX_FLOWS;
-    config->stream_buffer_bytes = PACKETSCOPE_DEFAULT_STREAM_BUFFER_BYTES;
-    config->flow_timeout_seconds = PACKETSCOPE_DEFAULT_FLOW_TIMEOUT_SECONDS;
+    config->payload_decode_bytes = MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES;
+    config->payload_preview_bytes = MINISNIFFER_DEFAULT_PAYLOAD_PREVIEW_BYTES;
+    config->max_flows = MINISNIFFER_DEFAULT_MAX_FLOWS;
+    config->stream_buffer_bytes = MINISNIFFER_DEFAULT_STREAM_BUFFER_BYTES;
+    config->flow_timeout_seconds = MINISNIFFER_DEFAULT_FLOW_TIMEOUT_SECONDS;
     config->max_packets = 0;
     config->stats_mode = 0;
     config->filter_protocol_enabled = 0;

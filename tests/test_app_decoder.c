@@ -23,8 +23,8 @@ static PacketInfo make_payload_packet(
     packet.payload = payload;
     packet.payload_capture_length = payload_length;
     packet.payload_decode_length = payload_length;
-    packet.payload_preview_length = payload_length > PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES
-        ? PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES
+    packet.payload_preview_length = payload_length > MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES
+        ? MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES
         : payload_length;
 
     return packet;

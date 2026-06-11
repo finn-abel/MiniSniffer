@@ -6,7 +6,7 @@
 
 /*
  * Store protocol numbers in FlowKey using the IP protocol registry values.
- * That keeps flow identity independent from PacketScope's display enum names.
+ * That keeps flow identity independent from MiniSniffer's display enum names.
  */
 static bool packet_protocol_to_flow_protocol(Protocol protocol, uint8_t *transport_protocol) {
     if (transport_protocol == NULL) {

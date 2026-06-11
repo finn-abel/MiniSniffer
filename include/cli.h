@@ -11,7 +11,7 @@
 int cli_parse_args(int argc, char **argv, AppConfig *config);
 
 /*
- * Prints supported PacketScope command-line usage.
+ * Prints supported MiniSniffer command-line usage.
  * program_name is shown in the usage examples.
  */
 void cli_print_usage(const char *program_name);

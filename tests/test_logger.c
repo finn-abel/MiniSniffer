@@ -4,7 +4,7 @@
 
 #include "logger.h"
 
-#define TEST_LOG_PATH "/tmp/packetscope_test_logger.csv"
+#define TEST_LOG_PATH "/tmp/minisniffer_test_logger.csv"
 
 static PacketInfo make_tcp_packet(void) {
     PacketInfo info;

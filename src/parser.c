@@ -38,7 +38,7 @@ static uint32_t read_u32_network(const unsigned char *bytes) {
 }
 
 /*
- * Maps the IPv4 protocol number into PacketScope's shared protocol enum.
+ * Maps the IPv4 protocol number into MiniSniffer's shared protocol enum.
  * Unsupported protocol numbers intentionally collapse to PROTO_OTHER.
  */
 static void set_ipv4_protocol(unsigned char protocol_number, PacketInfo *info) {
@@ -141,12 +141,12 @@ static void parse_payload(
     info->payload = packet + payload_offset;
     info->payload_capture_length = available;
     info->payload_decode_length = available;
-    if (info->payload_decode_length > PACKETSCOPE_DEFAULT_PAYLOAD_DECODE_BYTES) {
-        info->payload_decode_length = PACKETSCOPE_DEFAULT_PAYLOAD_DECODE_BYTES;
+    if (info->payload_decode_length > MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES) {
+        info->payload_decode_length = MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES;
     }
     info->payload_preview_length = available;
-    if (info->payload_preview_length > PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES) {
-        info->payload_preview_length = PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES;
+    if (info->payload_preview_length > MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES) {
+        info->payload_preview_length = MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES;
     }
 
     memcpy(info->payload_preview, info->payload, info->payload_preview_length);
@@ -199,7 +199,7 @@ static void parse_udp_payload(
 }
 
 /*
- * ICMP's common header is eight bytes for the packet types PacketScope displays.
+ * ICMP's common header is eight bytes for the packet types MiniSniffer displays.
  * Anything captured after that is treated as ICMP payload preview data.
  */
 static void parse_icmp_payload(

@@ -4,7 +4,7 @@
 #include "logger.h"
 
 static bool payload_logging_enabled = false;
-static size_t payload_logging_limit = PACKETSCOPE_MAX_PAYLOAD_PREVIEW_BYTES;
+static size_t payload_logging_limit = MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES;
 
 /*
  * logger.c preserves the original packet CSV API while csv_logger.c owns the

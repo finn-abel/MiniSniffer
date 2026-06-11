@@ -6,7 +6,7 @@
 #include "csv_logger.h"
 #include "fixtures/app_fixtures.h"
 
-#define TEST_CSV_LOG_PATH "/tmp/packetscope_test_csv_logger.csv"
+#define TEST_CSV_LOG_PATH "/tmp/minisniffer_test_csv_logger.csv"
 
 static PacketInfo make_packet(void) {
     PacketInfo packet;
