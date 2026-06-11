@@ -29,14 +29,43 @@ static PacketInfo make_payload_packet(
     return packet;
 }
 
+static size_t build_minimal_client_hello(uint8_t *buffer) {
+    size_t offset = 0;
+    size_t i;
+
+    buffer[offset++] = 0x16;
+    buffer[offset++] = 0x03;
+    buffer[offset++] = 0x03;
+    buffer[offset++] = 0x00;
+    buffer[offset++] = 0x2d;
+    buffer[offset++] = 0x01;
+    buffer[offset++] = 0x00;
+    buffer[offset++] = 0x00;
+    buffer[offset++] = 0x29;
+    buffer[offset++] = 0x03;
+    buffer[offset++] = 0x03;
+    for (i = 0; i < 32; i++) {
+        buffer[offset++] = 0x00;
+    }
+    buffer[offset++] = 0x00;
+    buffer[offset++] = 0x00;
+    buffer[offset++] = 0x02;
+    buffer[offset++] = 0x13;
+    buffer[offset++] = 0x01;
+    buffer[offset++] = 0x01;
+    buffer[offset++] = 0x00;
+
+    return offset;
+}
+
 static void test_app_decode_buffer_detects_http(void) {
-    const uint8_t payload[] = "GET / HTTP/1.1\r\n";
+    const uint8_t payload[] = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
     AppInfo info;
 
     assert(app_decode_buffer(APP_PROTO_UNKNOWN, payload, sizeof(payload) - 1, &info) ==
            APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_HTTP);
-    assert(strcmp(info.summary, "HTTP/1.x") == 0);
+    assert(strcmp(info.http_method, "GET") == 0);
 }
 
 static void test_app_decode_buffer_reports_tls_need_more(void) {
@@ -48,15 +77,14 @@ static void test_app_decode_buffer_reports_tls_need_more(void) {
 }
 
 static void test_app_decode_buffer_detects_tls(void) {
-    const uint8_t payload[] = {
-        0x16, 0x03, 0x03, 0x00, 0x04,
-        0x01, 0x00, 0x00, 0x00
-    };
+    uint8_t payload[64];
+    size_t length = build_minimal_client_hello(payload);
     AppInfo info;
 
-    assert(app_decode_buffer(APP_PROTO_UNKNOWN, payload, sizeof(payload), &info) ==
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN, payload, length, &info) ==
            APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_TLS);
+    assert(info.tls_handshake_type == 0x01);
 }
 
 static void test_app_decode_buffer_reports_preferred_empty_need_more(void) {
@@ -70,13 +98,19 @@ static void test_app_decode_packet_uses_ports_for_dns(void) {
     const uint8_t payload[] = {
         0x12, 0x34, 0x01, 0x00,
         0x00, 0x01, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00
+        0x00, 0x00, 0x00, 0x00,
+        0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
+        0x03, 'c', 'o', 'm',
+        0x00,
+        0x00, 0x01,
+        0x00, 0x01
     };
     PacketInfo packet = make_payload_packet(PROTO_UDP, 54000, 53, payload, sizeof(payload));
     AppInfo info;
 
     assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_DNS);
+    assert(strcmp(info.dns_query_name, "example.com") == 0);
 }
 
 static void test_app_decode_packet_reports_preferred_malformed(void) {
