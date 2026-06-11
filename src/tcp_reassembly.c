@@ -129,7 +129,7 @@ static bool store_out_of_order_segment(
         payload == NULL ||
         payload_length == 0 ||
         payload_length > state->pending_byte_cap ||
-        state->pending_bytes + payload_length > state->pending_byte_cap) {
+        payload_length > state->pending_byte_cap - state->pending_bytes) {
         return false;
     }
 

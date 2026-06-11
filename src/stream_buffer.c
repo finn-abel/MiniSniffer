@@ -73,10 +73,10 @@ bool stream_buffer_append(StreamBuffer *buffer, const uint8_t *data, size_t leng
         return false;
     }
 
-    if (buffer->length + length > buffer->capacity) {
+    if (length > buffer->capacity - buffer->length) {
         compact_buffer(buffer);
     }
-    if (buffer->length + length > buffer->capacity) {
+    if (length > buffer->capacity - buffer->length) {
         return false;
     }
 

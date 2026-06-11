@@ -107,6 +107,48 @@ static void test_flow_table_caps_max_flows(void) {
     flow_table_cleanup(&table);
 }
 
+static int flow_matches_packet(const FlowInfo *flow, const PacketInfo *packet) {
+    FlowKey key;
+
+    return flow != NULL &&
+           flow_key_from_packet(packet, &key, NULL) &&
+           flow->key.a_ip.ipv4 == key.a_ip.ipv4 &&
+           flow->key.a_port == key.a_port &&
+           flow->key.b_ip.ipv4 == key.b_ip.ipv4 &&
+           flow->key.b_port == key.b_port &&
+           flow->key.transport_protocol == key.transport_protocol;
+}
+
+static void test_flow_table_evicts_oldest_flow_when_full(void) {
+    FlowTable table;
+    PacketInfo first_packet = make_tcp_packet("10.0.0.1", 50000, "93.184.216.34", 80, 100);
+    PacketInfo second_packet = make_tcp_packet("10.0.0.2", 50001, "93.184.216.34", 80, 100);
+    PacketInfo third_packet = make_tcp_packet("10.0.0.3", 50002, "93.184.216.34", 80, 100);
+    FlowDirection direction;
+    size_t i;
+    int saw_first = 0;
+    int saw_second = 0;
+    int saw_third = 0;
+
+    assert(flow_table_init(&table, 2, 1024, 60));
+    assert(flow_table_get_or_create(&table, &first_packet, 10, &direction) != NULL);
+    assert(flow_table_get_or_create(&table, &second_packet, 20, &direction) != NULL);
+    assert(flow_table_get_or_create(&table, &third_packet, 30, &direction) != NULL);
+    assert(table.count == 2);
+
+    for (i = 0; i < table.count; i++) {
+        saw_first = saw_first || flow_matches_packet(&table.flows[i], &first_packet);
+        saw_second = saw_second || flow_matches_packet(&table.flows[i], &second_packet);
+        saw_third = saw_third || flow_matches_packet(&table.flows[i], &third_packet);
+    }
+
+    assert(!saw_first);
+    assert(saw_second);
+    assert(saw_third);
+
+    flow_table_cleanup(&table);
+}
+
 static void test_flow_key_rejects_packets_without_ports(void) {
     PacketInfo packet;
     FlowKey key;
@@ -124,6 +166,7 @@ int main(void) {
     test_flow_table_create_find_and_update();
     test_flow_table_evicts_idle_flows();
     test_flow_table_caps_max_flows();
+    test_flow_table_evicts_oldest_flow_when_full();
     test_flow_key_rejects_packets_without_ports();
 
     printf("All flow tests passed.\n");
