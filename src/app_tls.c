@@ -79,23 +79,32 @@ static void copy_text(char *destination, size_t destination_size, const uint8_t 
  */
 static int parse_sni_extension(const uint8_t *data, size_t length, AppInfo *out) {
     size_t offset = 0;
+    size_t list_end;
     uint16_t list_length;
-    uint8_t name_type;
-    uint16_t name_length;
 
     if (read_u16_at(data, length, &offset, &list_length) != 0 ||
-        list_length > length - offset) {
+        list_length != length - offset) {
         return 1;
     }
-    if (read_u8_at(data, length, &offset, &name_type) != 0 ||
-        read_u16_at(data, length, &offset, &name_length) != 0 ||
-        name_type != 0 ||
-        name_length > length - offset) {
-        return 1;
+    list_end = offset + list_length;
+
+    while (offset < list_end) {
+        uint8_t name_type;
+        uint16_t name_length;
+
+        if (read_u8_at(data, list_end, &offset, &name_type) != 0 ||
+            read_u16_at(data, list_end, &offset, &name_length) != 0 ||
+            name_length == 0 ||
+            name_length > list_end - offset) {
+            return 1;
+        }
+        if (name_type == 0 && out->tls_sni[0] == '\0') {
+            copy_text(out->tls_sni, sizeof(out->tls_sni), data + offset, name_length);
+        }
+        offset += name_length;
     }
 
-    copy_text(out->tls_sni, sizeof(out->tls_sni), data + offset, name_length);
-    return 0;
+    return offset == list_end ? 0 : 1;
 }
 
 /*
@@ -124,18 +133,21 @@ static int append_alpn(char *destination, size_t destination_size, const uint8_t
 
 static int parse_alpn_extension(const uint8_t *data, size_t length, AppInfo *out) {
     size_t offset = 0;
+    size_t list_end;
     uint16_t list_length;
 
     if (read_u16_at(data, length, &offset, &list_length) != 0 ||
-        list_length > length - offset) {
+        list_length != length - offset) {
         return 1;
     }
+    list_end = offset + list_length;
 
-    while (offset < 2 + (size_t)list_length) {
+    while (offset < list_end) {
         uint8_t protocol_length;
 
-        if (read_u8_at(data, length, &offset, &protocol_length) != 0 ||
-            protocol_length > length - offset) {
+        if (read_u8_at(data, list_end, &offset, &protocol_length) != 0 ||
+            protocol_length == 0 ||
+            protocol_length > list_end - offset) {
             return 1;
         }
         if (append_alpn(out->tls_alpn,
@@ -147,7 +159,7 @@ static int parse_alpn_extension(const uint8_t *data, size_t length, AppInfo *out
         offset += protocol_length;
     }
 
-    return 0;
+    return offset == list_end ? 0 : 1;
 }
 
 /*

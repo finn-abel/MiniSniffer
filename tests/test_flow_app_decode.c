@@ -47,6 +47,8 @@ static AppDecodeResult feed_segment(
     packet->payload_capture_length = length;
     packet->has_payload = length > 0;
 
+    assert(flow_prepare_reassembly_direction(flow, direction));
+
     assert(tcp_reassembly_process_segment(tcp,
                                           packet->tcp_sequence,
                                           packet->tcp_flags,

@@ -3,30 +3,18 @@
 
 #include "tcp_reassembly.h"
 
-/*
- * SYN and FIN each consume one sequence number even when they do not carry
- * payload bytes. Tracking that early keeps first data aligned after handshakes.
- */
-static uint32_t sequence_after_segment(uint32_t sequence, uint8_t flags, size_t payload_length) {
-    uint32_t next = sequence;
-
-    if ((flags & TCP_FLAG_SYN) != 0) {
-        next++;
-    }
-    next += (uint32_t)payload_length;
-    if ((flags & TCP_FLAG_FIN) != 0) {
-        next++;
-    }
-
-    return next;
-}
-
-/*
- * Payload begins one sequence number after SYN when SYN and data share a
- * segment. Normal data segments start exactly at their TCP sequence number.
- */
+/* Payload begins one sequence number after SYN when SYN carries data. */
 static uint32_t payload_sequence(uint32_t sequence, uint8_t flags) {
     return (flags & TCP_FLAG_SYN) != 0 ? sequence + 1 : sequence;
+}
+
+/* TCP sequence numbers use serial-number arithmetic, not ordinary integers. */
+static bool sequence_before(uint32_t left, uint32_t right) {
+    return (int32_t)(left - right) < 0;
+}
+
+static bool sequence_before_or_equal(uint32_t left, uint32_t right) {
+    return left == right || sequence_before(left, right);
 }
 
 /*
@@ -74,7 +62,7 @@ static bool append_stream_data(TcpReassemblyDirection *state, const uint8_t *dat
  * After in-order data advances next_sequence, previously buffered segments may
  * now fit. Re-run until no pending segment can extend the contiguous stream.
  */
-static void flush_pending_segments(TcpReassemblyDirection *state) {
+static bool flush_pending_segments(TcpReassemblyDirection *state) {
     bool advanced = true;
 
     while (advanced) {
@@ -85,13 +73,13 @@ static void flush_pending_segments(TcpReassemblyDirection *state) {
             TcpOutOfOrderSegment *segment = &state->pending[i];
             uint32_t segment_end = segment->sequence + (uint32_t)segment->length;
 
-            if (segment_end <= state->next_sequence) {
+            if (sequence_before_or_equal(segment_end, state->next_sequence)) {
                 state->retransmissions++;
                 remove_pending_at(state, i);
                 advanced = true;
                 break;
             }
-            if (segment->sequence <= state->next_sequence) {
+            if (sequence_before_or_equal(segment->sequence, state->next_sequence)) {
                 size_t trim = (size_t)(state->next_sequence - segment->sequence);
 
                 /*
@@ -102,7 +90,8 @@ static void flush_pending_segments(TcpReassemblyDirection *state) {
                     state->overlapping_segments++;
                 }
                 if (!append_stream_data(state, segment->data + trim, segment->length - trim)) {
-                    return;
+                    state->unusable = true;
+                    return false;
                 }
                 state->next_sequence = segment_end;
                 remove_pending_at(state, i);
@@ -111,6 +100,8 @@ static void flush_pending_segments(TcpReassemblyDirection *state) {
             }
         }
     }
+
+    return true;
 }
 
 /*
@@ -197,7 +188,7 @@ TcpReassemblyResult tcp_reassembly_process_segment(
     uint32_t data_sequence;
     uint32_t segment_end;
 
-    if (state == NULL) {
+    if (state == NULL || state->unusable) {
         return TCP_REASSEMBLY_DROPPED;
     }
 
@@ -213,26 +204,30 @@ TcpReassemblyResult tcp_reassembly_process_segment(
          * If capture starts mid-stream, the first segment becomes our baseline.
          * Later gaps and retransmits are interpreted relative to this point.
          */
-        state->next_sequence = sequence_after_segment(sequence, flags, 0);
+        state->next_sequence = payload_sequence(sequence, flags);
         state->initial_sequence_known = true;
     }
 
     if (payload_length == 0) {
+        if ((flags & TCP_FLAG_FIN) != 0 && state->next_sequence == payload_sequence(sequence, flags)) {
+            state->next_sequence++;
+        }
         return TCP_REASSEMBLY_ACCEPTED;
     }
-    if (payload == NULL || payload_length > state->stream.capacity) {
+    if (payload == NULL || payload_length > UINT32_MAX || payload_length > state->stream.capacity) {
+        state->unusable = true;
         return TCP_REASSEMBLY_DROPPED;
     }
 
     data_sequence = payload_sequence(sequence, flags);
     segment_end = data_sequence + (uint32_t)payload_length;
 
-    if (segment_end <= state->next_sequence) {
+    if (sequence_before_or_equal(segment_end, state->next_sequence)) {
         state->retransmissions++;
         return TCP_REASSEMBLY_IGNORED;
     }
 
-    if (data_sequence > state->next_sequence) {
+    if (sequence_before(state->next_sequence, data_sequence)) {
         /*
          * A future sequence means a gap exists. Keep the segment only if it can
          * fit in the bounded pending store.
@@ -245,7 +240,7 @@ TcpReassemblyResult tcp_reassembly_process_segment(
         return TCP_REASSEMBLY_BUFFERED;
     }
 
-    if (data_sequence < state->next_sequence) {
+    if (sequence_before(data_sequence, state->next_sequence)) {
         size_t trim = (size_t)(state->next_sequence - data_sequence);
 
         /*
@@ -263,10 +258,16 @@ TcpReassemblyResult tcp_reassembly_process_segment(
     }
 
     if (!append_stream_data(state, payload, payload_length)) {
+        state->unusable = true;
         return TCP_REASSEMBLY_DROPPED;
     }
     state->next_sequence = data_sequence + (uint32_t)payload_length;
-    flush_pending_segments(state);
+    if ((flags & TCP_FLAG_FIN) != 0) {
+        state->next_sequence++;
+    }
+    if (!flush_pending_segments(state)) {
+        return TCP_REASSEMBLY_DROPPED;
+    }
 
     return TCP_REASSEMBLY_ACCEPTED;
 }

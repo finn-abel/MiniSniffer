@@ -23,9 +23,9 @@ int logger_open(const char *path) {
 }
 
 void logger_write(const PacketInfo *info) {
-    csv_logger_write_packet(info, NULL, "none");
+    (void)csv_logger_write_packet(info, NULL, "none");
 }
 
 void logger_close(void) {
-    csv_logger_close();
+    (void)csv_logger_close();
 }

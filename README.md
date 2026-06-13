@@ -107,8 +107,8 @@ Usage: ./MiniSniffer [--help] [--interface <name>] [--count <number>]
 | `--payload-hex <hex>` | Display only packets whose bounded payload decode window contains the byte pattern. |
 | `--decode-app` | Decode packet-local HTTP, DNS, and TLS ClientHello metadata. |
 | `--reassemble` | Enable bounded TCP stream reassembly for app decoding. Requires `--decode-app`. |
-| `--max-flows <number>` | Set the maximum number of tracked flows for reassembly. Default is 4096. Requires `--reassemble`. |
-| `--stream-buffer-bytes <number>` | Set the per-direction TCP stream buffer cap. Default is 65536 bytes. Requires `--reassemble`. |
+| `--max-flows <number>` | Set the maximum number of tracked TCP flows for reassembly. Default is 512; maximum is 1024. Requires `--reassemble`. |
+| `--stream-buffer-bytes <number>` | Set the per-direction TCP stream buffer cap. Default is 32768 bytes; maximum is 1048576 bytes. Requires `--reassemble`. |
 | `--flow-timeout <seconds>` | Evict flows idle for at least this many seconds. Default is 60 seconds. Requires `--reassemble`. |
 | `--app <http|dns|tls>` | Display only packets with decoded app metadata for the selected protocol. Requires `--decode-app`. |
 | `--http-host <host>` | Display only decoded HTTP packets with a matching Host header. Requires `--decode-app`. |
@@ -226,14 +226,18 @@ summary when it is available:
 ```
 
 With `--decode-app --reassemble`, stream-derived app metadata is printed as a
-flow event when the flow is first classified:
+flow event with the first packet from that flow that passes all active filters:
 
 ```text
 flow tcp 192.168.1.25:51432 <-> 93.184.216.34:443 app=tls sni=example.com alpn=h2
 ```
 
-Packets that cannot be parsed as Ethernet/IPv4 are displayed as `OTHER` when
-they pass the active filters.
+Non-IPv4 Ethernet packets are displayed as `OTHER` when they pass the active
+filters. Capture startup rejects interfaces whose libpcap data-link type is not
+Ethernet, rather than interpreting another link-layer format incorrectly.
+
+Application metadata is escaped before terminal output. Control bytes are
+shown as `\xNN` text and cannot emit terminal control sequences.
 
 ## Application Decoding Limits
 
@@ -250,7 +254,9 @@ frames can be decoded after they span multiple in-order or simply reordered TCP
 segments. Data that exceeds configured memory caps is dropped instead of growing
 without bound.
 
-Flow tracking is bounded by `--max-flows`. When the table is full after idle
+Flow tracking is bounded by `--max-flows`. Only TCP flows are tracked, and each
+direction's storage is allocated lazily when payload arrives. The CLI enforces
+per-setting and aggregate memory ceilings. When the table is full after idle
 eviction, MiniSniffer evicts the least recently seen flow to preserve the memory
 cap. Each direction has its own fixed stream buffer; data that cannot fit is
 dropped rather than reallocating the buffer.
@@ -262,6 +268,10 @@ Use `--log <file>` to write displayed packets to CSV:
 ```sh
 sudo ./MiniSniffer --count 25 --log packets.csv
 ```
+
+The log path must not already exist. MiniSniffer creates it atomically with
+owner-only permissions (`0600`) and refuses existing files and symbolic links.
+This prevents privileged runs from truncating an attacker-selected file.
 
 CSV columns:
 
@@ -287,6 +297,10 @@ timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_p
 
 `app_source` is `packet` for packet-local metadata, `flow` for stream-derived
 flow metadata, or `none` when no app metadata is available.
+
+Text cells escape control bytes and neutralize leading spreadsheet formula
+characters before writing, so opening captured metadata in spreadsheet software
+does not evaluate network-supplied formulas.
 
 ## Stats
 
@@ -326,6 +340,16 @@ Run the same suite with AddressSanitizer and UndefinedBehaviorSanitizer:
 ```sh
 make test CFLAGS='-Wall -Wextra -Werror -std=c11 -g -fsanitize=address,undefined -fno-omit-frame-pointer'
 ```
+
+Run the full suite with LLVM line and branch coverage:
+
+```sh
+make coverage
+```
+
+The coverage profile, line-by-line report, JSON summary, and captured test
+output are written to `/tmp/packetscope-coverage` by default. Set
+`COVERAGE_DIR` to use another directory.
 
 Rebuild the executable after running tests:
 
@@ -424,11 +448,18 @@ Important modules:
 ## Limitations
 
 - MiniSniffer currently parses Ethernet IPv4 packets.
+- Fragmented IPv4 datagrams retain coarse protocol/address metadata but are not
+  decoded at the transport or application layers because IP reassembly is not
+  implemented.
 - TCP and UDP ports are parsed only when enough header bytes were captured.
+- IPv4 total length and UDP length fields bound all transport payload views;
+  Ethernet padding is never treated as payload.
 - Payload display and legacy payload CSV output are bounded to 256 bytes.
 - Payload filters and packet-local app decoders inspect a bounded decode window.
 - IPv6 packet parsing is not implemented.
 - App decoding is intentionally limited to cleartext HTTP/1.x metadata, DNS
   query metadata, and TLS ClientHello metadata.
 - TCP reassembly is conservative and bounded; it is not a full TCP stack.
+- HTTP Host, DNS query, and TLS SNI filters compare domain names without ASCII
+  case sensitivity and ignore one trailing root dot.
 - Live capture behavior depends on libpcap support and local OS permissions.

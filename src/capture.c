@@ -216,17 +216,22 @@ static bool flow_decode_stream_app(
         packet == NULL ||
         packet->protocol != PROTO_TCP ||
         packet->has_tcp_sequence == 0 ||
+        packet->has_payload == 0 ||
+        packet->payload_capture_length == 0 ||
         flow->app_classified ||
         direction > FLOW_DIR_B_TO_A) {
         return false;
     }
 
+    if (!flow_prepare_reassembly_direction(flow, direction)) {
+        return false;
+    }
     tcp_state = &flow->directions[direction].tcp;
     reassembly_result = tcp_reassembly_process_segment(tcp_state,
                                                        packet->tcp_sequence,
                                                        packet->tcp_flags,
                                                        packet->payload,
-                                                       packet->payload_decode_length);
+                                                       packet->payload_capture_length);
     if (reassembly_result == TCP_REASSEMBLY_DROPPED) {
         return false;
     }
@@ -302,6 +307,15 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         return 1;
     }
 
+    if (pcap_datalink(handle) != DLT_EN10MB) {
+        fprintf(stderr,
+                "Error: interface '%s' uses unsupported data-link type %d; Ethernet is required.\n",
+                device,
+                pcap_datalink(handle));
+        pcap_close(handle);
+        return 1;
+    }
+
     if (config->reassemble) {
         if (!flow_table_init(&flow_table,
                              config->max_flows,
@@ -312,6 +326,17 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             return 1;
         }
         flow_table_ready = true;
+    }
+
+    /* Open output only after capture and optional flow state are ready. */
+    if (config->logging_enabled != 0 &&
+        csv_logger_open(config->log_path,
+                        config->decode_app,
+                        config->payload_display_enabled != 0,
+                        config->payload_preview_bytes) != 0) {
+        flow_table_cleanup(&flow_table);
+        pcap_close(handle);
+        return 1;
     }
 
     while (!should_stop &&
@@ -340,6 +365,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         }
         if (result == -1) {
             fprintf(stderr, "Error: packet capture failed: %s\n", pcap_geterr(handle));
+            (void)csv_logger_close();
             flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
@@ -350,6 +376,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
 
         if (parser_parse_packet(packet, header->caplen, &info) != 0) {
             fprintf(stderr, "Packet parsing failed.\n");
+            (void)csv_logger_close();
             flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
@@ -372,7 +399,6 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                            flow_decode_stream_app(flow, direction, &info)) {
                     flow_app_ptr = &flow->app;
                     app_source = "flow";
-                    output_print_flow_app_event(flow);
                 }
             }
         }
@@ -399,6 +425,11 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             continue;
         }
 
+        if (flow != NULL && flow->app_classified && !flow->app_event_printed) {
+            output_print_flow_app_event(flow);
+            flow->app_event_printed = true;
+        }
+
         /*
          * Only displayed packets are numbered, printed, logged, counted for
          * stats, and considered toward --count.
@@ -412,9 +443,14 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         if (config->payload_display_enabled != 0) {
             packet_info_print_payload(&info, config->payload_preview_bytes);
         }
-        csv_logger_write_packet(&info,
-                                packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
-                                app_source);
+        if (csv_logger_write_packet(&info,
+                                    packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
+                                    app_source) != 0) {
+            (void)csv_logger_close();
+            flow_table_cleanup(&flow_table);
+            pcap_close(handle);
+            return 1;
+        }
         stats_update(stats, &info);
     }
 
@@ -424,5 +460,5 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
 
     flow_table_cleanup(&flow_table);
     pcap_close(handle);
-    return 0;
+    return csv_logger_close();
 }

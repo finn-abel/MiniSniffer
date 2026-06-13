@@ -69,10 +69,21 @@ static void test_stats_functions_accept_null_inputs(void) {
     assert(stats.total_packets == 0);
 }
 
+static void test_stats_print_handles_empty_and_populated_stats(void) {
+    PacketStats stats;
+    PacketInfo packet = make_packet(PROTO_TCP, 101);
+
+    stats_init(&stats);
+    stats_print(&stats);
+    stats_update(&stats, &packet);
+    stats_print(&stats);
+}
+
 int main(void) {
     test_stats_init_clears_counters();
     test_stats_update_tracks_protocol_counts_and_bytes();
     test_stats_functions_accept_null_inputs();
+    test_stats_print_handles_empty_and_populated_stats();
 
     printf("All stats tests passed.\n");
 

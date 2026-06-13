@@ -46,10 +46,30 @@ static void test_byte_reader_rejects_null_data(void) {
     assert(!br_read_u8(&reader, &value));
 }
 
+static void test_byte_reader_handles_invalid_state_and_outputs(void) {
+    const uint8_t data[] = {0x12, 0x34, 0x56, 0x78};
+    ByteReader reader;
+    uint32_t value32;
+
+    br_init(NULL, data, sizeof(data));
+    assert(!br_remaining(NULL, 0));
+
+    br_init(&reader, data, sizeof(data));
+    assert(!br_read_u8(&reader, NULL));
+    assert(!br_read_u16_be(&reader, NULL));
+    assert(!br_read_u32_be(&reader, NULL));
+    assert(br_read_u32_be(&reader, &value32));
+    assert(value32 == 0x12345678u);
+
+    reader.offset = reader.length + 1;
+    assert(!br_remaining(&reader, 0));
+}
+
 int main(void) {
     test_byte_reader_reads_big_endian_values();
     test_byte_reader_skip_and_remaining_are_bounded();
     test_byte_reader_rejects_null_data();
+    test_byte_reader_handles_invalid_state_and_outputs();
 
     printf("All byte reader tests passed.\n");
 

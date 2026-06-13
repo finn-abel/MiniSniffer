@@ -59,6 +59,7 @@ static void test_logger_writes_header_and_rows(void) {
     PacketInfo tcp_info = make_tcp_packet();
     PacketInfo icmp_info = make_icmp_packet();
 
+    remove(TEST_LOG_PATH);
     assert(logger_open(TEST_LOG_PATH) == 0);
     logger_write(&tcp_info);
     logger_write(&icmp_info);
@@ -86,6 +87,7 @@ static void test_logger_writes_payload_columns_when_enabled(void) {
     PacketInfo info = make_payload_packet();
 
     logger_set_payload_logging(1, 5);
+    remove(TEST_LOG_PATH);
     assert(logger_open(TEST_LOG_PATH) == 0);
     logger_write(&info);
     logger_close();
@@ -107,6 +109,7 @@ static void test_logger_writes_payload_columns_when_enabled(void) {
 }
 
 static void test_logger_write_ignores_null_info(void) {
+    remove(TEST_LOG_PATH);
     assert(logger_open(TEST_LOG_PATH) == 0);
     logger_write(NULL);
     logger_close();

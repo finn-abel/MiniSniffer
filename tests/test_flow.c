@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "config.h"
 #include "flow.h"
 
 static PacketInfo make_tcp_packet(
@@ -57,6 +58,11 @@ static void test_flow_table_create_find_and_update(void) {
 
     first = flow_table_get_or_create(&table, &forward, 10, &direction);
     assert(first != NULL);
+    assert(first->directions[FLOW_DIR_A_TO_B].tcp.stream.data == NULL);
+    assert(first->directions[FLOW_DIR_B_TO_A].tcp.stream.data == NULL);
+    assert(flow_prepare_reassembly_direction(first, direction));
+    assert(first->directions[FLOW_DIR_A_TO_B].tcp.stream.data != NULL);
+    assert(first->directions[FLOW_DIR_B_TO_A].tcp.stream.data == NULL);
     assert(direction == FLOW_DIR_A_TO_B);
     flow_update_packet(first, &forward, 10, direction);
 
@@ -161,6 +167,124 @@ static void test_flow_key_rejects_packets_without_ports(void) {
     assert(!flow_key_from_packet(&packet, &key, NULL));
 }
 
+static void test_flow_table_rejects_unsafe_limits(void) {
+    FlowTable table;
+
+    assert(!flow_table_init(NULL, 1, 1024, 60));
+    assert(!flow_table_init(&table, 0, 1024, 60));
+    assert(!flow_table_init(&table, 1, 0, 60));
+    assert(!flow_table_init(&table, MINISNIFFER_MAX_FLOWS + 1, 1024, 60));
+    assert(!flow_table_init(&table, 1, MINISNIFFER_MAX_STREAM_BUFFER_BYTES + 1, 60));
+    assert(!flow_table_init(&table, 1024, 32769, 60));
+}
+
+static void test_flow_key_supports_udp_and_endpoint_ties(void) {
+    PacketInfo packet = make_tcp_packet("10.0.0.1", 60000, "10.0.0.1", 50000, 10);
+    FlowKey key;
+    FlowDirection direction;
+
+    assert(flow_key_from_packet(&packet, &key, &direction));
+    assert(direction == FLOW_DIR_B_TO_A);
+
+    packet.src_port = 50000;
+    packet.dst_port = 60000;
+    assert(flow_key_from_packet(&packet, &key, &direction));
+    assert(direction == FLOW_DIR_A_TO_B);
+
+    packet.src_port = 50000;
+    packet.dst_port = 50000;
+    assert(flow_key_from_packet(&packet, &key, &direction));
+    assert(direction == FLOW_DIR_A_TO_B);
+
+    packet.protocol = PROTO_UDP;
+    packet.src_port = 60000;
+    packet.dst_port = 50000;
+    assert(flow_key_from_packet(&packet, &key, &direction));
+    assert(key.transport_protocol == 17);
+    assert(key.a_port == 60000);
+    assert(direction == FLOW_DIR_A_TO_B);
+}
+
+static void test_flow_functions_reject_invalid_inputs(void) {
+    FlowTable table;
+    FlowInfo flow;
+    FlowKey key;
+    PacketInfo packet = make_tcp_packet("bad-ip", 1, "10.0.0.2", 2, 10);
+
+    memset(&table, 0, sizeof(table));
+    memset(&flow, 0, sizeof(flow));
+    flow_table_cleanup(NULL);
+    flow_table_cleanup(&table);
+    flow_table_evict_idle(NULL, 10);
+    flow_table_evict_idle(&table, 10);
+
+    assert(!flow_key_from_packet(NULL, &key, NULL));
+    assert(!flow_key_from_packet(&packet, NULL, NULL));
+    assert(!flow_key_from_packet(&packet, &key, NULL));
+    snprintf(packet.src_ip, sizeof(packet.src_ip), "10.0.0.1");
+    packet.protocol = PROTO_OTHER;
+    assert(!flow_key_from_packet(&packet, &key, NULL));
+
+    assert(flow_table_get_or_create(NULL, &packet, 1, NULL) == NULL);
+    assert(flow_table_get_or_create(&table, &packet, 1, NULL) == NULL);
+    assert(flow_table_get_or_create(&table, NULL, 1, NULL) == NULL);
+
+    assert(!flow_prepare_reassembly_direction(NULL, FLOW_DIR_A_TO_B));
+    assert(!flow_prepare_reassembly_direction(&flow, (FlowDirection)2));
+    assert(!flow_prepare_reassembly_direction(&flow, FLOW_DIR_A_TO_B));
+
+    flow_update_packet(NULL, &packet, 1, FLOW_DIR_A_TO_B);
+    flow_update_packet(&flow, NULL, 1, FLOW_DIR_A_TO_B);
+    flow_update_packet(&flow, &packet, 1, (FlowDirection)2);
+}
+
+static void test_flow_table_handles_zero_timeout_and_clock_rollback(void) {
+    FlowTable table;
+    PacketInfo packet = make_tcp_packet("10.0.0.1", 50000, "10.0.0.2", 80, 10);
+    FlowDirection direction;
+
+    assert(flow_table_init(&table, 2, 64, 0));
+    assert(flow_table_get_or_create(&table, &packet, 20, &direction) != NULL);
+    flow_table_evict_idle(&table, 10);
+    assert(table.count == 1);
+    flow_table_cleanup(&table);
+
+    assert(flow_table_init(&table, 2, 64, 5));
+    assert(flow_table_get_or_create(&table, &packet, 20, &direction) != NULL);
+    flow_table_evict_idle(&table, 10);
+    assert(table.count == 1);
+    flow_table_cleanup(&table);
+}
+
+static void test_flow_table_can_select_nonzero_oldest_index(void) {
+    FlowTable table;
+    PacketInfo first = make_tcp_packet("10.0.0.1", 50000, "10.0.0.9", 80, 10);
+    PacketInfo second = make_tcp_packet("10.0.0.2", 50001, "10.0.0.9", 80, 10);
+    PacketInfo third = make_tcp_packet("10.0.0.3", 50002, "10.0.0.9", 80, 10);
+    FlowDirection direction;
+
+    assert(flow_table_init(&table, 2, 64, 0));
+    assert(flow_table_get_or_create(&table, &first, 20, &direction) != NULL);
+    assert(flow_table_get_or_create(&table, &second, 10, &direction) != NULL);
+    assert(flow_table_get_or_create(&table, &third, 30, &direction) != NULL);
+    assert(table.count == 2);
+    assert(flow_matches_packet(&table.flows[0], &first));
+    assert(flow_matches_packet(&table.flows[1], &third));
+    flow_table_cleanup(&table);
+}
+
+static void test_flow_table_rejects_manually_exhausted_table(void) {
+    FlowInfo storage;
+    FlowTable table;
+    PacketInfo packet = make_tcp_packet("10.0.0.1", 50000, "10.0.0.2", 80, 10);
+
+    memset(&storage, 0, sizeof(storage));
+    memset(&table, 0, sizeof(table));
+    table.flows = &storage;
+    table.max_flows = 0;
+    assert(flow_table_get_or_create(&table, &packet, 1, NULL) == NULL);
+}
+
 int main(void) {
     test_flow_key_normalizes_tcp_directions();
     test_flow_table_create_find_and_update();
@@ -168,6 +292,12 @@ int main(void) {
     test_flow_table_caps_max_flows();
     test_flow_table_evicts_oldest_flow_when_full();
     test_flow_key_rejects_packets_without_ports();
+    test_flow_table_rejects_unsafe_limits();
+    test_flow_key_supports_udp_and_endpoint_ties();
+    test_flow_functions_reject_invalid_inputs();
+    test_flow_table_handles_zero_timeout_and_clock_rollback();
+    test_flow_table_can_select_nonzero_oldest_index();
+    test_flow_table_rejects_manually_exhausted_table();
 
     printf("All flow tests passed.\n");
 

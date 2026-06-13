@@ -121,6 +121,40 @@ static int app_has_alpn(const char *list, const char *needle) {
     return 0;
 }
 
+static unsigned char ascii_lower(unsigned char value) {
+    return value >= 'A' && value <= 'Z' ? (unsigned char)(value + ('a' - 'A')) : value;
+}
+
+/* DNS names, HTTP host names, and SNI names are ASCII case-insensitive. */
+static int domain_name_equals(const char *left, const char *right) {
+    size_t left_length;
+    size_t right_length;
+    size_t i;
+
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+
+    left_length = strlen(left);
+    right_length = strlen(right);
+    if (left_length > 1 && left[left_length - 1] == '.') {
+        left_length--;
+    }
+    if (right_length > 1 && right[right_length - 1] == '.') {
+        right_length--;
+    }
+    if (left_length != right_length) {
+        return 0;
+    }
+
+    for (i = 0; i < left_length; i++) {
+        if (ascii_lower((unsigned char)left[i]) != ascii_lower((unsigned char)right[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /*
  * Checks one AppInfo object against all enabled app filters.
  * Protocol-specific filters fail when the app protocol does not match.
@@ -134,7 +168,7 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
     }
     if (config->filter_http_host_enabled &&
         (app->protocol != APP_PROTO_HTTP ||
-         strcmp(app->http_host, config->filter_http_host) != 0)) {
+         !domain_name_equals(app->http_host, config->filter_http_host))) {
         return 0;
     }
     if (config->filter_http_method_enabled &&
@@ -144,7 +178,7 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
     }
     if (config->filter_dns_query_enabled &&
         (app->protocol != APP_PROTO_DNS ||
-         strcmp(app->dns_query_name, config->filter_dns_query) != 0)) {
+         !domain_name_equals(app->dns_query_name, config->filter_dns_query))) {
         return 0;
     }
     if (config->filter_dns_type_enabled &&
@@ -154,7 +188,7 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
     }
     if (config->filter_tls_sni_enabled &&
         (app->protocol != APP_PROTO_TLS ||
-         strcmp(app->tls_sni, config->filter_tls_sni) != 0)) {
+         !domain_name_equals(app->tls_sni, config->filter_tls_sni))) {
         return 0;
     }
     if (config->filter_tls_alpn_enabled &&

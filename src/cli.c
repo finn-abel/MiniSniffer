@@ -573,6 +573,20 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
         return fail_with_error(program_name,
                                "stream buffer and flow table settings require --reassemble.");
     }
+    if (config->reassemble && config->max_flows > MINISNIFFER_MAX_FLOWS) {
+        return fail_with_error(program_name, "--max-flows exceeds the supported safety limit.");
+    }
+    if (config->reassemble &&
+        config->stream_buffer_bytes > MINISNIFFER_MAX_STREAM_BUFFER_BYTES) {
+        return fail_with_error(program_name,
+                               "--stream-buffer-bytes exceeds the supported safety limit.");
+    }
+    if (config->reassemble &&
+        config->max_flows >
+            MINISNIFFER_MAX_TOTAL_REASSEMBLY_BYTES / 4 / config->stream_buffer_bytes) {
+        return fail_with_error(program_name,
+                               "requested flow buffers exceed the aggregate memory limit.");
+    }
     /*
      * App filters need decoded app metadata. Enforce this at parse time so a
      * mistyped command does not silently match no packets.

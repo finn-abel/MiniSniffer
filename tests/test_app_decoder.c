@@ -131,6 +131,148 @@ static void test_app_decode_buffer_reports_malformed(void) {
                              &info) == APP_DECODE_MALFORMED);
 }
 
+static void test_app_decode_buffer_handles_all_preferences(void) {
+    AppInfo info;
+
+    memset(&info, 0xff, sizeof(info));
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN, NULL, 1, &info) == APP_DECODE_NO_MATCH);
+    assert(info.protocol == APP_PROTO_UNKNOWN);
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN, (const uint8_t *)"", 0, NULL) ==
+           APP_DECODE_NO_MATCH);
+
+    assert(app_decode_buffer(APP_PROTO_TLS,
+                             TLS_CLIENT_HELLO_SNI,
+                             sizeof(TLS_CLIENT_HELLO_SNI),
+                             &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_TLS);
+
+    assert(app_decode_buffer(APP_PROTO_DNS, DNS_A_QUERY, sizeof(DNS_A_QUERY), &info) ==
+           APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_DNS);
+
+    assert(app_decode_buffer(APP_PROTO_DNS,
+                             HTTP_NO_MATCH,
+                             sizeof(HTTP_NO_MATCH) - 1,
+                             &info) == APP_DECODE_MALFORMED);
+    assert(info.protocol == APP_PROTO_UNKNOWN);
+}
+
+static void test_app_decode_buffer_sniffs_dns_and_rejects_random_data(void) {
+    static const uint8_t random_data[] = {0xff, 0x00, 0x01, 0x02};
+    AppInfo info;
+
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN, DNS_A_QUERY, sizeof(DNS_A_QUERY), &info) ==
+           APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_DNS);
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN, random_data, sizeof(random_data), &info) ==
+           APP_DECODE_NO_MATCH);
+    assert(info.protocol == APP_PROTO_UNKNOWN);
+}
+
+static void test_app_decode_packet_sniffs_signatures_without_ports(void) {
+    PacketInfo packet = make_payload_packet(PROTO_OTHER,
+                                            0,
+                                            0,
+                                            HTTP_GET_WITH_HOST,
+                                            sizeof(HTTP_GET_WITH_HOST) - 1);
+    AppInfo info;
+
+    packet.has_ports = 0;
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_HTTP);
+
+    packet.payload = TLS_CLIENT_HELLO_SNI;
+    packet.payload_capture_length = sizeof(TLS_CLIENT_HELLO_SNI);
+    packet.payload_decode_length = sizeof(TLS_CLIENT_HELLO_SNI);
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_TLS);
+
+    packet.payload = DNS_A_QUERY;
+    packet.payload_capture_length = sizeof(DNS_A_QUERY);
+    packet.payload_decode_length = sizeof(DNS_A_QUERY);
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_DNS);
+
+    packet.payload = HTTP_NO_MATCH;
+    packet.payload_capture_length = sizeof(HTTP_NO_MATCH) - 1;
+    packet.payload_decode_length = sizeof(HTTP_NO_MATCH) - 1;
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_NO_MATCH);
+    assert(info.protocol == APP_PROTO_UNKNOWN);
+}
+
+static void test_app_decode_packet_uses_tls_ports(void) {
+    PacketInfo packet = make_payload_packet(PROTO_TCP,
+                                            8443,
+                                            50000,
+                                            TLS_CLIENT_HELLO_SNI,
+                                            sizeof(TLS_CLIENT_HELLO_SNI));
+    AppInfo info;
+
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_TLS);
+}
+
+static void test_app_decode_packet_rejects_invalid_payload_views(void) {
+    PacketInfo packet;
+    AppInfo info;
+
+    memset(&packet, 0, sizeof(packet));
+    packet.has_payload = 1;
+    packet.payload_decode_length = 1;
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_NO_MATCH);
+
+    packet.payload = HTTP_NO_MATCH;
+    packet.payload_decode_length = 0;
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_NO_MATCH);
+
+    packet.has_payload = 0;
+    packet.payload_decode_length = sizeof(HTTP_NO_MATCH) - 1;
+    assert(app_decode_packet(&packet, NULL) == APP_DECODE_NO_MATCH);
+}
+
+static void test_app_decode_stream_uses_hints_and_fallback(void) {
+    uint8_t dns_frame[sizeof(DNS_A_QUERY) + 2];
+    PacketInfo packet;
+    AppInfo info;
+
+    assert(app_decode_stream(NULL, HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1, &info) ==
+           APP_DECODE_NO_MATCH);
+    memset(&packet, 0, sizeof(packet));
+    assert(app_decode_stream(&packet, NULL, 1, &info) == APP_DECODE_NO_MATCH);
+    assert(app_decode_stream(&packet, HTTP_GET_WITH_HOST, 0, &info) == APP_DECODE_NO_MATCH);
+
+    packet = make_payload_packet(PROTO_TCP, 50000, 8080, NULL, 0);
+    assert(app_decode_stream(&packet,
+                             HTTP_GET_WITH_HOST,
+                             sizeof(HTTP_GET_WITH_HOST) - 1,
+                             &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_HTTP);
+
+    packet.src_port = 443;
+    packet.dst_port = 50000;
+    assert(app_decode_stream(&packet,
+                             TLS_CLIENT_HELLO_SNI,
+                             sizeof(TLS_CLIENT_HELLO_SNI),
+                             &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_TLS);
+
+    dns_frame[0] = 0;
+    dns_frame[1] = (uint8_t)sizeof(DNS_A_QUERY);
+    memcpy(dns_frame + 2, DNS_A_QUERY, sizeof(DNS_A_QUERY));
+    packet.src_port = 50000;
+    packet.dst_port = 53;
+    assert(app_decode_stream(&packet, dns_frame, sizeof(dns_frame), &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_DNS);
+
+    packet.protocol = PROTO_OTHER;
+    packet.has_ports = 0;
+    assert(app_decode_stream(&packet,
+                             HTTP_GET_WITH_HOST,
+                             sizeof(HTTP_GET_WITH_HOST) - 1,
+                             &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_HTTP);
+}
+
 int main(void) {
     test_app_decode_buffer_detects_http();
     test_app_decode_buffer_reports_tls_need_more();
@@ -142,6 +284,12 @@ int main(void) {
     test_app_decode_packet_reports_preferred_malformed();
     test_app_decode_packet_rejects_empty_payload();
     test_app_decode_buffer_reports_malformed();
+    test_app_decode_buffer_handles_all_preferences();
+    test_app_decode_buffer_sniffs_dns_and_rejects_random_data();
+    test_app_decode_packet_sniffs_signatures_without_ports();
+    test_app_decode_packet_uses_tls_ports();
+    test_app_decode_packet_rejects_invalid_payload_views();
+    test_app_decode_stream_uses_hints_and_fallback();
 
     printf("All app decoder tests passed.\n");
 

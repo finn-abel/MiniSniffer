@@ -61,6 +61,8 @@ typedef struct {
     uint64_t byte_count;
     AppInfo app;
     bool app_classified;
+    bool app_event_printed;
+    size_t stream_buffer_bytes;
     FlowDirectionState directions[2];
 } FlowInfo;
 
@@ -120,6 +122,9 @@ void flow_update_packet(
     uint64_t now_seconds,
     FlowDirection direction
 );
+
+/* Lazily allocates reassembly storage for one active TCP direction. */
+bool flow_prepare_reassembly_direction(FlowInfo *flow, FlowDirection direction);
 
 /*
  * Removes flows that have been idle at least timeout_seconds.

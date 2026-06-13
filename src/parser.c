@@ -15,6 +15,8 @@
 #define TCP_MIN_HEADER_LEN 20
 #define UDP_HEADER_LEN 8
 #define ICMP_HEADER_LEN 8
+#define IPV4_FRAGMENT_OFFSET_MASK 0x1fff
+#define IPV4_MORE_FRAGMENTS 0x2000
 
 /*
  * Reads a two-byte network-order integer without assuming packet alignment.
@@ -114,6 +116,9 @@ static void parse_udp_ports(
     }
 
     udp_header = packet + udp_offset;
+    if (read_u16_network(udp_header + 4) < UDP_HEADER_LEN) {
+        return;
+    }
     info->src_port = read_u16_network(udp_header);
     info->dst_port = read_u16_network(udp_header + 2);
     info->has_ports = 1;
@@ -191,8 +196,21 @@ static void parse_udp_payload(
     size_t udp_offset,
     PacketInfo *info
 ) {
+    uint16_t udp_length;
+
     if (packet_len < udp_offset + UDP_HEADER_LEN) {
         return;
+    }
+
+    udp_length = read_u16_network(packet + udp_offset + 4);
+    if (udp_length < UDP_HEADER_LEN) {
+        return;
+    }
+    if ((size_t)udp_length > packet_len - udp_offset) {
+        return;
+    }
+    if ((size_t)udp_length < packet_len - udp_offset) {
+        packet_len = udp_offset + (size_t)udp_length;
     }
 
     parse_payload(packet, packet_len, udp_offset + UDP_HEADER_LEN, info);
@@ -233,6 +251,10 @@ int parser_parse_packet(
     const unsigned char *ip_header;
     uint16_t ether_type_network;
     uint16_t ether_type;
+    uint16_t ip_total_length;
+    uint16_t fragment_field;
+    size_t captured_ip_length;
+    size_t parsed_packet_len;
     size_t ip_header_len;
     unsigned char ip_version;
 
@@ -289,6 +311,16 @@ int parser_parse_packet(
         return 0;
     }
 
+    ip_total_length = read_u16_network(ip_header + 2);
+    if (ip_total_length < ip_header_len) {
+        return 0;
+    }
+    captured_ip_length = packet_len - ETHERNET_HEADER_LEN;
+    parsed_packet_len = ETHERNET_HEADER_LEN +
+        (captured_ip_length < (size_t)ip_total_length
+             ? captured_ip_length
+             : (size_t)ip_total_length);
+
     /*
      * inet_ntop handles byte-order details for IPv4 address presentation.
      * The source and destination fields begin at offsets 12 and 16.
@@ -307,16 +339,27 @@ int parser_parse_packet(
      */
     set_ipv4_protocol(ip_header[9], info);
     clear_transport_ports(info);
+
+    /*
+     * Transport headers in fragmented datagrams are not safe to interpret
+     * without IPv4 reassembly. Even the first fragment may not contain a full
+     * transport payload, so leave only coarse IP protocol metadata populated.
+     */
+    fragment_field = read_u16_network(ip_header + 6);
+    if ((fragment_field & (IPV4_FRAGMENT_OFFSET_MASK | IPV4_MORE_FRAGMENTS)) != 0) {
+        return 0;
+    }
+
     if (info->protocol == PROTO_TCP) {
-        parse_tcp_ports(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
-        parse_tcp_sequence_and_flags(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
-        parse_tcp_payload(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_tcp_ports(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_tcp_sequence_and_flags(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_tcp_payload(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
     } else if (info->protocol == PROTO_UDP) {
-        parse_udp_ports(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
-        parse_udp_payload(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_udp_ports(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_udp_payload(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
     } else if (info->protocol == PROTO_ICMP) {
         clear_transport_ports(info);
-        parse_icmp_payload(packet, packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_icmp_payload(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
     }
 
     return 0;

@@ -352,6 +352,16 @@ static void test_cli_parse_args_rejects_invalid_app_decode_options(void) {
     char *flow_timeout_without_reassemble[] = {
         "MiniSniffer", "--decode-app", "--flow-timeout", "10"
     };
+    char *max_flows_too_large[] = {
+        "MiniSniffer", "--decode-app", "--reassemble", "--max-flows", "1025"
+    };
+    char *stream_buffer_too_large[] = {
+        "MiniSniffer", "--decode-app", "--reassemble", "--stream-buffer-bytes", "1048577"
+    };
+    char *aggregate_memory_too_large[] = {
+        "MiniSniffer", "--decode-app", "--reassemble", "--max-flows", "1024",
+        "--stream-buffer-bytes", "32769"
+    };
 
     config_init_defaults(&config);
     assert(cli_parse_args(2, reassemble_without_decode, &config) != 0);
@@ -373,6 +383,15 @@ static void test_cli_parse_args_rejects_invalid_app_decode_options(void) {
 
     config_init_defaults(&config);
     assert(cli_parse_args(4, flow_timeout_without_reassemble, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(5, max_flows_too_large, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(5, stream_buffer_too_large, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(7, aggregate_memory_too_large, &config) != 0);
 }
 
 static void test_cli_parse_args_rejects_app_filters_without_decode_app(void) {
@@ -394,6 +413,117 @@ static void test_cli_parse_args_rejects_invalid_app_filters(void) {
 
     config_init_defaults(&config);
     assert(cli_parse_args(4, bad_dns_type, &config) != 0);
+}
+
+static void assert_cli_rejects(int argc, char **argv) {
+    AppConfig config;
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(argc, argv, &config) != 0);
+}
+
+static void test_cli_parse_args_rejects_all_missing_values(void) {
+    char *count[] = {"MiniSniffer", "--count"};
+    char *protocol[] = {"MiniSniffer", "--protocol"};
+    char *port[] = {"MiniSniffer", "--port"};
+    char *host[] = {"MiniSniffer", "--host"};
+    char *log[] = {"MiniSniffer", "--log"};
+    char *payload_bytes[] = {"MiniSniffer", "--payload-bytes"};
+    char *payload_text[] = {"MiniSniffer", "--payload-contains"};
+    char *payload_hex[] = {"MiniSniffer", "--payload-hex"};
+    char *app[] = {"MiniSniffer", "--app"};
+    char *http_host[] = {"MiniSniffer", "--http-host"};
+    char *http_method[] = {"MiniSniffer", "--http-method"};
+    char *dns_query[] = {"MiniSniffer", "--dns-query"};
+    char *dns_type[] = {"MiniSniffer", "--dns-type"};
+    char *tls_sni[] = {"MiniSniffer", "--tls-sni"};
+    char *tls_alpn[] = {"MiniSniffer", "--tls-alpn"};
+    char *max_flows[] = {"MiniSniffer", "--max-flows"};
+    char *stream_buffer[] = {"MiniSniffer", "--stream-buffer-bytes"};
+    char *flow_timeout[] = {"MiniSniffer", "--flow-timeout"};
+
+    assert_cli_rejects(2, count);
+    assert_cli_rejects(2, protocol);
+    assert_cli_rejects(2, port);
+    assert_cli_rejects(2, host);
+    assert_cli_rejects(2, log);
+    assert_cli_rejects(2, payload_bytes);
+    assert_cli_rejects(2, payload_text);
+    assert_cli_rejects(2, payload_hex);
+    assert_cli_rejects(2, app);
+    assert_cli_rejects(2, http_host);
+    assert_cli_rejects(2, http_method);
+    assert_cli_rejects(2, dns_query);
+    assert_cli_rejects(2, dns_type);
+    assert_cli_rejects(2, tls_sni);
+    assert_cli_rejects(2, tls_alpn);
+    assert_cli_rejects(2, max_flows);
+    assert_cli_rejects(2, stream_buffer);
+    assert_cli_rejects(2, flow_timeout);
+}
+
+static void test_cli_parse_args_rejects_oversized_strings(void) {
+    char long_value[300];
+    char *interface[] = {"MiniSniffer", "--interface", long_value};
+    char *log[] = {"MiniSniffer", "--log", long_value};
+    char *payload_text[] = {"MiniSniffer", "--payload-contains", long_value};
+    char *http_host[] = {"MiniSniffer", "--decode-app", "--http-host", long_value};
+    char *http_method[] = {"MiniSniffer", "--decode-app", "--http-method", long_value};
+    char *dns_query[] = {"MiniSniffer", "--decode-app", "--dns-query", long_value};
+    char *tls_sni[] = {"MiniSniffer", "--decode-app", "--tls-sni", long_value};
+    char *tls_alpn[] = {"MiniSniffer", "--decode-app", "--tls-alpn", long_value};
+
+    memset(long_value, 'x', sizeof(long_value) - 1);
+    long_value[sizeof(long_value) - 1] = '\0';
+    assert_cli_rejects(3, interface);
+    assert_cli_rejects(3, log);
+    assert_cli_rejects(3, payload_text);
+    assert_cli_rejects(4, http_host);
+    assert_cli_rejects(4, http_method);
+    assert_cli_rejects(4, dns_query);
+    assert_cli_rejects(4, tls_sni);
+    assert_cli_rejects(4, tls_alpn);
+}
+
+static void test_cli_parse_args_accepts_dns_types_and_uppercase_hex(void) {
+    AppConfig config;
+    char *dns_ns[] = {"MiniSniffer", "--decode-app", "--dns-type", "NS"};
+    char *dns_cname[] = {"MiniSniffer", "--decode-app", "--dns-type", "CNAME"};
+    char *dns_aaaa[] = {"MiniSniffer", "--decode-app", "--dns-type", "AAAA"};
+    char *dns_numeric[] = {"MiniSniffer", "--decode-app", "--dns-type", "15"};
+    char *payload_hex[] = {"MiniSniffer", "--payload-hex", "AF 0B"};
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, dns_ns, &config) == 0);
+    assert(config.filter_dns_type == 2);
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, dns_cname, &config) == 0);
+    assert(config.filter_dns_type == 5);
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, dns_aaaa, &config) == 0);
+    assert(config.filter_dns_type == 28);
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, dns_numeric, &config) == 0);
+    assert(config.filter_dns_type == 15);
+    config_init_defaults(&config);
+    assert(cli_parse_args(3, payload_hex, &config) == 0);
+    assert(config.filter_payload_hex[0] == 0xaf);
+    assert(config.filter_payload_hex[1] == 0x0b);
+}
+
+static void test_cli_parse_args_rejects_empty_and_overflow_values(void) {
+    char *payload_text[] = {"MiniSniffer", "--payload-contains", ""};
+    char *payload_hex[] = {"MiniSniffer", "--payload-hex", "GG"};
+    char *count[] = {"MiniSniffer", "--count", "999999999999999999999999"};
+    char *timeout[] = {
+        "MiniSniffer", "--decode-app", "--reassemble", "--flow-timeout", "4294967296"
+    };
+
+    assert_cli_rejects(3, payload_text);
+    assert_cli_rejects(3, payload_hex);
+    assert_cli_rejects(3, count);
+    assert_cli_rejects(5, timeout);
+    assert(cli_parse_args(1, (char *[]){"MiniSniffer"}, NULL) != 0);
 }
 
 static void test_cli_print_usage_accepts_null_program_name(void) {
@@ -428,6 +558,10 @@ int main(void) {
     test_cli_parse_args_rejects_invalid_app_decode_options();
     test_cli_parse_args_rejects_app_filters_without_decode_app();
     test_cli_parse_args_rejects_invalid_app_filters();
+    test_cli_parse_args_rejects_all_missing_values();
+    test_cli_parse_args_rejects_oversized_strings();
+    test_cli_parse_args_accepts_dns_types_and_uppercase_hex();
+    test_cli_parse_args_rejects_empty_and_overflow_values();
     test_cli_print_usage_accepts_null_program_name();
 
     printf("All cli tests passed.\n");

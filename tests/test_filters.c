@@ -159,6 +159,154 @@ static void test_filters_fail_without_app_data(void) {
     assert(!filters_match(&config, &context));
 }
 
+static void test_domain_filters_are_case_insensitive(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo app = make_http_app();
+    FilterContext context;
+
+    config_init_defaults(&config);
+    config.filter_http_host_enabled = true;
+    snprintf(config.filter_http_host, sizeof(config.filter_http_host), "EXAMPLE.COM.");
+
+    context.packet = &packet;
+    context.packet_app = &app;
+    context.flow_app = NULL;
+    context.flow_is_classified = false;
+
+    assert(filters_match(&config, &context));
+}
+
+static void test_filters_reject_invalid_contexts(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    FilterContext context;
+
+    config_init_defaults(&config);
+    memset(&context, 0, sizeof(context));
+    assert(!filters_match(NULL, &context));
+    assert(!filters_match(&config, NULL));
+    assert(!filters_match(&config, &context));
+    context.packet = &packet;
+    assert(filters_match(&config, &context));
+}
+
+static void test_transport_and_payload_filter_failures(void) {
+    static const unsigned char payload[] = "ABC";
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    FilterContext context;
+
+    memset(&context, 0, sizeof(context));
+    context.packet = &packet;
+
+    config_init_defaults(&config);
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_UDP;
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_port_enabled = 1;
+    config.filter_port = 53;
+    packet.has_ports = 0;
+    assert(!filters_match(&config, &context));
+    packet.has_ports = 1;
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_host_enabled = 1;
+    snprintf(config.filter_host, sizeof(config.filter_host), "10.0.0.1");
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_payload_text_enabled = 1;
+    memcpy(config.filter_payload_text, "A", 1);
+    config.filter_payload_text_length = 1;
+    packet.has_payload = 0;
+    assert(!filters_match(&config, &context));
+    packet.has_payload = 1;
+    packet.payload = NULL;
+    packet.payload_decode_length = 3;
+    assert(!filters_match(&config, &context));
+    packet.payload = payload;
+    config.filter_payload_text_length = 4;
+    assert(!filters_match(&config, &context));
+    config.filter_payload_text_length = 0;
+    assert(!filters_match(&config, &context));
+    memcpy(config.filter_payload_text, "Z", 1);
+    config.filter_payload_text_length = 1;
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_payload_hex_enabled = 1;
+    config.filter_payload_hex[0] = 0xff;
+    config.filter_payload_hex_length = 1;
+    packet.has_payload = 0;
+    assert(!filters_match(&config, &context));
+}
+
+static void test_app_filter_mismatch_paths(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo app = make_http_app();
+    FilterContext context;
+
+    memset(&context, 0, sizeof(context));
+    context.packet = &packet;
+    context.packet_app = &app;
+
+    config_init_defaults(&config);
+    config.filter_app_enabled = true;
+    config.filter_app_protocol = APP_PROTO_DNS;
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_http_method_enabled = true;
+    snprintf(config.filter_http_method, sizeof(config.filter_http_method), "POST");
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_dns_query_enabled = true;
+    snprintf(config.filter_dns_query, sizeof(config.filter_dns_query), "example.com");
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_dns_type_enabled = true;
+    config.filter_dns_type = 1;
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_tls_sni_enabled = true;
+    snprintf(config.filter_tls_sni, sizeof(config.filter_tls_sni), "example.com");
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_tls_alpn_enabled = true;
+    snprintf(config.filter_tls_alpn, sizeof(config.filter_tls_alpn), "smtp");
+    app = make_tls_app();
+    context.packet_app = &app;
+    assert(!filters_match(&config, &context));
+}
+
+static void test_domain_filter_handles_left_dot_and_character_mismatch(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo app = make_http_app();
+    FilterContext context;
+
+    memset(&context, 0, sizeof(context));
+    context.packet = &packet;
+    context.packet_app = &app;
+    config_init_defaults(&config);
+    config.filter_http_host_enabled = true;
+    snprintf(app.http_host, sizeof(app.http_host), "Example.COM.");
+    snprintf(config.filter_http_host, sizeof(config.filter_http_host), "example.com");
+    assert(filters_match(&config, &context));
+
+    snprintf(config.filter_http_host, sizeof(config.filter_http_host), "example.net");
+    assert(!filters_match(&config, &context));
+}
+
 int main(void) {
     test_filters_match_packet_app();
     test_filters_match_flow_app();
@@ -166,6 +314,11 @@ int main(void) {
     test_reassembly_mode_matches_future_classified_flow_packets();
     test_reassembly_mode_classifying_packet_does_not_match_yet();
     test_filters_fail_without_app_data();
+    test_domain_filters_are_case_insensitive();
+    test_filters_reject_invalid_contexts();
+    test_transport_and_payload_filter_failures();
+    test_app_filter_mismatch_paths();
+    test_domain_filter_handles_left_dot_and_character_mismatch();
 
     printf("All filters tests passed.\n");
 

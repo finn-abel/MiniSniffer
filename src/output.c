@@ -64,6 +64,32 @@ static void print_ip_address(IPAddress address) {
            (unsigned int)(address.ipv4 & 0xff));
 }
 
+static void print_escaped_text(const char *text) {
+    const unsigned char *cursor = (const unsigned char *)text;
+
+    if (cursor == NULL) {
+        return;
+    }
+    while (*cursor != '\0') {
+        if (*cursor >= 0x20 && *cursor <= 0x7e && *cursor != '\\') {
+            putchar(*cursor);
+        } else if (*cursor == '\\') {
+            printf("\\\\");
+        } else {
+            printf("\\x%02x", (unsigned int)*cursor);
+        }
+        cursor++;
+    }
+}
+
+static void print_text_field(const char *name, const char *value) {
+    if (value == NULL || value[0] == '\0') {
+        return;
+    }
+    printf(" %s=", name);
+    print_escaped_text(value);
+}
+
 /*
  * Shared app formatter keeps packet and future flow output visually consistent.
  * The prefix supplies the output boundary: "app:" or "flow app:".
@@ -75,27 +101,19 @@ static void print_app_with_prefix(const AppInfo *app, const char *prefix) {
 
     if (app->protocol == APP_PROTO_HTTP) {
         printf("%shttp", prefix);
-        if (app->http_method[0] != '\0') {
-            printf(" method=%s", app->http_method);
-        }
+        print_text_field("method", app->http_method);
         if (app->http_status_code != 0) {
             printf(" status=%u", (unsigned int)app->http_status_code);
         }
-        if (app->http_host[0] != '\0') {
-            printf(" host=%s", app->http_host);
-        }
-        if (app->http_path[0] != '\0') {
-            printf(" path=%s", app->http_path);
-        }
+        print_text_field("host", app->http_host);
+        print_text_field("path", app->http_path);
         printf("\n");
         return;
     }
 
     if (app->protocol == APP_PROTO_DNS) {
         printf("%sdns", prefix);
-        if (app->dns_query_name[0] != '\0') {
-            printf(" query=%s", app->dns_query_name);
-        }
+        print_text_field("query", app->dns_query_name);
         if (app->dns_query_type != 0) {
             printf(" type=");
             print_dns_type(app->dns_query_type);
@@ -106,12 +124,8 @@ static void print_app_with_prefix(const AppInfo *app, const char *prefix) {
 
     if (app->protocol == APP_PROTO_TLS) {
         printf("%stls", prefix);
-        if (app->tls_sni[0] != '\0') {
-            printf(" sni=%s", app->tls_sni);
-        }
-        if (app->tls_alpn[0] != '\0') {
-            printf(" alpn=%s", app->tls_alpn);
-        }
+        print_text_field("sni", app->tls_sni);
+        print_text_field("alpn", app->tls_alpn);
         printf("\n");
     }
 }
@@ -123,24 +137,16 @@ static void print_flow_app_fields(const AppInfo *app) {
 
     printf(" app=%s", app_protocol_name(app->protocol));
     if (app->protocol == APP_PROTO_HTTP) {
-        if (app->http_method[0] != '\0') {
-            printf(" method=%s", app->http_method);
-        }
+        print_text_field("method", app->http_method);
         if (app->http_status_code != 0) {
             printf(" status=%u", (unsigned int)app->http_status_code);
         }
-        if (app->http_host[0] != '\0') {
-            printf(" host=%s", app->http_host);
-        }
-        if (app->http_path[0] != '\0') {
-            printf(" path=%s", app->http_path);
-        }
+        print_text_field("host", app->http_host);
+        print_text_field("path", app->http_path);
         return;
     }
     if (app->protocol == APP_PROTO_DNS) {
-        if (app->dns_query_name[0] != '\0') {
-            printf(" query=%s", app->dns_query_name);
-        }
+        print_text_field("query", app->dns_query_name);
         if (app->dns_query_type != 0) {
             printf(" type=");
             print_dns_type(app->dns_query_type);
@@ -148,12 +154,8 @@ static void print_flow_app_fields(const AppInfo *app) {
         return;
     }
     if (app->protocol == APP_PROTO_TLS) {
-        if (app->tls_sni[0] != '\0') {
-            printf(" sni=%s", app->tls_sni);
-        }
-        if (app->tls_alpn[0] != '\0') {
-            printf(" alpn=%s", app->tls_alpn);
-        }
+        print_text_field("sni", app->tls_sni);
+        print_text_field("alpn", app->tls_alpn);
     }
 }
 

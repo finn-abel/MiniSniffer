@@ -4,7 +4,6 @@
 #include "capture.h"
 #include "cli.h"
 #include "config.h"
-#include "csv_logger.h"
 #include "stats.h"
 
 static int args_requested_help(int argc, char **argv) {
@@ -34,14 +33,6 @@ int main(int argc, char **argv) {
     }
 
     stats_init(&stats);
-
-    if (config.logging_enabled != 0 &&
-        csv_logger_open(config.log_path,
-                        config.decode_app,
-                        config.payload_display_enabled != 0,
-                        config.payload_preview_bytes) != 0) {
-        return 1;
-    }
 
     printf("MiniSniffer starting...\n");
     printf("Interface: %s\n",
@@ -105,7 +96,6 @@ int main(int argc, char **argv) {
     }
 
     capture_result = capture_start(&config, &stats);
-    csv_logger_close();
 
     if (config.stats_mode != 0) {
         stats_print(&stats);

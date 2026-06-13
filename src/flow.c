@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "config.h"
 #include "flow.h"
 
 /*
@@ -101,7 +102,10 @@ bool flow_table_init(
     size_t stream_buffer_bytes,
     uint32_t timeout_seconds
 ) {
-    if (table == NULL || max_flows == 0 || stream_buffer_bytes == 0) {
+    if (table == NULL || max_flows == 0 || stream_buffer_bytes == 0 ||
+        max_flows > MINISNIFFER_MAX_FLOWS ||
+        stream_buffer_bytes > MINISNIFFER_MAX_STREAM_BUFFER_BYTES ||
+        max_flows > MINISNIFFER_MAX_TOTAL_REASSEMBLY_BYTES / 4 / stream_buffer_bytes) {
         return false;
     }
 
@@ -244,7 +248,8 @@ FlowInfo *flow_table_get_or_create(
     size_t i;
     FlowInfo *flow;
 
-    if (table == NULL || table->flows == NULL ||
+    if (table == NULL || table->flows == NULL || packet == NULL ||
+        packet->protocol != PROTO_TCP ||
         !flow_key_from_packet(packet, &key, &packet_direction)) {
         return NULL;
     }
@@ -272,22 +277,30 @@ FlowInfo *flow_table_get_or_create(
     flow->key = key;
     flow->created_time = now_seconds;
     flow->last_seen_time = now_seconds;
+    flow->stream_buffer_bytes = table->stream_buffer_bytes;
     /* Make unclassified flow state explicit for filters and output. */
     flow->app.protocol = APP_PROTO_UNKNOWN;
-    if (!tcp_reassembly_direction_init(&flow->directions[FLOW_DIR_A_TO_B].tcp,
-                                       table->stream_buffer_bytes) ||
-        !tcp_reassembly_direction_init(&flow->directions[FLOW_DIR_B_TO_A].tcp,
-                                       table->stream_buffer_bytes)) {
-        tcp_reassembly_direction_cleanup(&flow->directions[FLOW_DIR_A_TO_B].tcp);
-        memset(flow, 0, sizeof(*flow));
-        return NULL;
-    }
     table->count++;
 
     if (direction != NULL) {
         *direction = packet_direction;
     }
     return flow;
+}
+
+bool flow_prepare_reassembly_direction(FlowInfo *flow, FlowDirection direction) {
+    TcpReassemblyDirection *tcp;
+
+    if (flow == NULL || direction > FLOW_DIR_B_TO_A || flow->stream_buffer_bytes == 0) {
+        return false;
+    }
+
+    tcp = &flow->directions[direction].tcp;
+    if (tcp->stream.data != NULL) {
+        return true;
+    }
+
+    return tcp_reassembly_direction_init(tcp, flow->stream_buffer_bytes);
 }
 
 /*

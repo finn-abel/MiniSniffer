@@ -8,6 +8,7 @@
 /*
  * Opens a CSV log with either the legacy packet schema or the stable app schema.
  * App-enabled logs use the same columns for packet and future flow metadata.
+ * The path must not already exist; new files are created with mode 0600.
  */
 int csv_logger_open(
     const char *path,
@@ -19,16 +20,17 @@ int csv_logger_open(
 /*
  * Writes one displayed packet row.
  * app_source should be "packet", "flow", or "none" when app columns are enabled.
+ * Returns non-zero when buffered data cannot be flushed to the log.
  */
-void csv_logger_write_packet(
+int csv_logger_write_packet(
     const PacketInfo *packet,
     const AppInfo *app,
     const char *app_source
 );
 
 /*
- * Closes the active CSV file if one is open.
+ * Closes the active CSV file if one is open. Returns non-zero on close failure.
  */
-void csv_logger_close(void);
+int csv_logger_close(void);
 
 #endif

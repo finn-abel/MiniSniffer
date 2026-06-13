@@ -35,6 +35,7 @@ typedef struct {
     bool initial_sequence_known;
     bool fin_seen;
     bool rst_seen;
+    bool unusable;
 
     uint64_t out_of_order_segments;
     uint64_t retransmissions;

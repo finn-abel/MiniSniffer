@@ -1,6 +1,10 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "config.h"
 #include "csv_logger.h"
@@ -28,20 +32,37 @@ static const char *app_protocol_to_string(AppProtocol protocol) {
     }
 }
 
+static bool csv_text_needs_formula_prefix(const unsigned char *text) {
+    if (text == NULL) {
+        return false;
+    }
+    while (*text == ' ') {
+        text++;
+    }
+    return *text == '=' || *text == '+' || *text == '-' || *text == '@';
+}
+
 /*
  * Quote all text fields in the app schema. HTTP paths, host names, ALPN lists,
  * and future metadata may contain commas or quotes.
  */
 static void write_csv_text(FILE *file, const char *text) {
-    const char *cursor;
+    const unsigned char *cursor = (const unsigned char *)text;
 
     fputc('"', file);
-    if (text != NULL) {
-        for (cursor = text; *cursor != '\0'; cursor++) {
+    if (cursor != NULL) {
+        if (csv_text_needs_formula_prefix(cursor)) {
+            fputc('\'', file);
+        }
+        for (; *cursor != '\0'; cursor++) {
             if (*cursor == '"') {
                 fputc('"', file);
             }
-            fputc(*cursor, file);
+            if (*cursor >= 0x20 && *cursor <= 0x7e) {
+                fputc(*cursor, file);
+            } else {
+                fprintf(file, "\\x%02x", (unsigned int)*cursor);
+            }
         }
     }
     fputc('"', file);
@@ -83,6 +104,19 @@ static void write_payload_ascii(FILE *file, const PacketInfo *info) {
     limit = info->payload_preview_length;
     if (limit > payload_logging_limit) {
         limit = payload_logging_limit;
+    }
+
+    if (limit > 0) {
+        size_t first = 0;
+
+        while (first < limit && info->payload_preview[first] == ' ') {
+            first++;
+        }
+        if (first < limit &&
+            (info->payload_preview[first] == '=' || info->payload_preview[first] == '+' ||
+             info->payload_preview[first] == '-' || info->payload_preview[first] == '@')) {
+            fputc('\'', file);
+        }
     }
 
     for (i = 0; i < limit; i++) {
@@ -136,11 +170,13 @@ int csv_logger_open(
     bool enable_payload_columns,
     size_t payload_preview_limit
 ) {
+    int fd;
+
     if (path == NULL || path[0] == '\0') {
         return 1;
     }
 
-    csv_logger_close();
+    (void)csv_logger_close();
     app_columns_enabled = enable_app_columns;
     payload_columns_enabled = enable_payload_columns;
     payload_logging_limit = payload_preview_limit;
@@ -148,14 +184,26 @@ int csv_logger_open(
         payload_logging_limit = MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES;
     }
 
-    log_file = fopen(path, "w");
-    if (log_file == NULL) {
+    fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) {
         fprintf(stderr, "Error: cannot open log file '%s': %s\n", path, strerror(errno));
         return 1;
     }
+    log_file = fdopen(fd, "w");
+    if (log_file == NULL) {
+        int saved_errno = errno;
 
-    if (write_header(path) != 0) {
-        csv_logger_close();
+        close(fd);
+        unlink(path);
+        fprintf(stderr, "Error: cannot initialize log file '%s': %s\n",
+                path,
+                strerror(saved_errno));
+        return 1;
+    }
+
+    if (write_header(path) != 0 || fflush(log_file) != 0) {
+        (void)csv_logger_close();
+        unlink(path);
         return 1;
     }
 
@@ -306,31 +354,39 @@ static void write_app_packet(const PacketInfo *packet, const AppInfo *app, const
 /*
  * Public write path: app schema when enabled, otherwise legacy packet schema.
  */
-void csv_logger_write_packet(
+int csv_logger_write_packet(
     const PacketInfo *packet,
     const AppInfo *app,
     const char *app_source
 ) {
     if (log_file == NULL || packet == NULL) {
-        return;
+        return 0;
     }
 
     if (app_columns_enabled) {
         write_app_packet(packet, app, app_source);
-        return;
+    } else {
+        write_legacy_packet(packet);
     }
 
-    write_legacy_packet(packet);
+    if (ferror(log_file) || fflush(log_file) != 0) {
+        fprintf(stderr, "Error: failed to write CSV log data.\n");
+        return 1;
+    }
+    return 0;
 }
 
 /*
  * Close resets only the file handle; the next open call chooses schema state.
  */
-void csv_logger_close(void) {
+int csv_logger_close(void) {
     if (log_file != NULL) {
         if (fclose(log_file) != 0) {
             fprintf(stderr, "Error: failed to close CSV log cleanly.\n");
+            log_file = NULL;
+            return 1;
         }
         log_file = NULL;
     }
+    return 0;
 }
