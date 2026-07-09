@@ -29,6 +29,12 @@ packet metadata. It handles IPv4 and IPv6 packets and extracts protocol,
 address, port, ICMP, size, timestamp, and payload-view information when enough
 bytes are present.
 
+ARP is also recognized directly from the Ethernet ethertype. Support is
+conservative: only the common Ethernet/IPv4 ARP shape (`htype=1`, `ptype=0x0800`,
+`hlen=6`, `plen=4`) is decoded into operation, sender/target IP, and
+sender/target MAC metadata. Anything else is left as `OTHER` rather than
+attempting variable hardware/protocol address length parsing.
+
 The parser treats packet bytes as untrusted input. IPv4 total length, IPv6
 payload length, and UDP length fields bound transport payload views, and
 link-layer padding is not treated as payload. The payload preview length and
@@ -57,12 +63,23 @@ ClientHello metadata. It is not a full TCP stack.
 the supported application metadata:
 
 - HTTP/1.x request and response metadata
-- DNS query metadata
+- DNS query metadata (`src/app_dns.c`)
 - TLS ClientHello SNI and ALPN metadata
+- DHCP message type, transaction ID, client MAC, and address metadata over UDP
+  67/68 (`src/app_dhcp.c`)
+- mDNS query metadata over UDP 5353, reusing the DNS wire-format parser in
+  `src/app_dns.c` (`app_dns_decode_mdns_message`/`app_dns_decode_mdns_udp`)
+- Conservative QUIC Initial-packet metadata over UDP 443/8443: version,
+  Destination Connection ID, and Source Connection ID only (`src/app_quic.c`)
 
 Packet-local decoding is enabled with `--decode-app`. Stream-derived decoding
-requires `--decode-app --reassemble`. MiniSniffer does not decrypt traffic.
-TLS support is limited to clear ClientHello metadata.
+requires `--decode-app --reassemble` and only applies to TCP (HTTP, TLS,
+DNS-over-TCP); DHCP, mDNS, and QUIC are UDP-only and are always decoded
+packet-locally. MiniSniffer does not decrypt traffic. TLS support is limited to
+clear ClientHello metadata, and QUIC support stops parsing immediately after the
+Source Connection ID — the Token, Length, packet number, and payload either
+require removing header protection or are encrypted outright, and MiniSniffer
+never attempts either.
 
 Decoder results are reduced to stable status values for observability:
 `no_match`, `need_more`, `malformed`, `truncated`, and `decoded`. Text and JSON
@@ -77,21 +94,26 @@ in stats.
 
 Supported filters include:
 
-- `--protocol <tcp|udp|icmp|other>`
+- `--protocol <tcp|udp|icmp|arp|other>`
 - `--port <number>`
 - `--host <ip>`
 - `--payload-contains <text>`
 - `--payload-hex <hex>`
-- `--app <http|dns|tls>`
+- `--app <http|dns|tls|dhcp|mdns|quic>`
 - `--http-host <host>`
 - `--http-method <method>`
-- `--dns-query <name>`
-- `--dns-type <type>`
+- `--dns-query <name>` (matches both DNS and mDNS, since mDNS reuses the same
+  `dns_query_name` field)
+- `--dns-type <type>` (matches both DNS and mDNS)
 - `--tls-sni <host>`
 - `--tls-alpn <protocol>`
+- `--dhcp-type <type>`
+- `--quic-version <version>`
 
 Application filters require `--decode-app`. Reassembly-related flow settings
-require `--decode-app --reassemble`.
+require `--decode-app --reassemble`. ARP has no transport ports; sender/target
+IPv4 addresses populate the same `src_ip`/`dst_ip` fields as other protocols, so
+`--protocol arp` and `--host <ip>` filters work without special-casing ARP.
 
 HTTP Host, DNS query, and TLS SNI filters use `--domain-match` to select
 comparison behavior. The default `normalized` mode is ASCII case-insensitive
@@ -141,6 +163,11 @@ network tool.
 - Bounded payload inspection and payload display
 - Payload decode and payload preview use separate bounded windows
 - Cleartext HTTP/1.x metadata only
-- DNS query metadata only
+- DNS and mDNS query metadata only
 - TLS ClientHello metadata only
+- DHCP metadata limited to the fixed BOOTP header, message type, and requested
+  IP option
+- QUIC metadata limited to visible Initial-packet version/DCID/SCID; no header
+  protection removal or decryption is attempted
+- ARP metadata limited to the common Ethernet/IPv4 shape
 - Conservative bounded TCP reassembly, not a full TCP stack

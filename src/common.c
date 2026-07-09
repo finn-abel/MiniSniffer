@@ -13,6 +13,8 @@ const char *protocol_to_string(Protocol protocol) {
         return "UDP";
     case PROTO_ICMP:
         return "ICMP";
+    case PROTO_ARP:
+        return "ARP";
     case PROTO_OTHER:
     default:
         return "OTHER";
@@ -52,6 +54,10 @@ int protocol_from_string(const char *text, Protocol *protocol) {
     }
     if (strcmp(text, "icmp") == 0) {
         *protocol = PROTO_ICMP;
+        return 0;
+    }
+    if (strcmp(text, "arp") == 0) {
+        *protocol = PROTO_ARP;
         return 0;
     }
     if (strcmp(text, "other") == 0) {
@@ -101,6 +107,13 @@ void packet_info_print(const PacketInfo *info) {
         if (info->has_icmp != 0) {
             printf(" type=%u code=%u", (unsigned int)info->icmp_type,
                    (unsigned int)info->icmp_code);
+        }
+        if (info->has_arp != 0) {
+            printf(" op=%s sender_mac=%s target_mac=%s",
+                   info->arp_operation == 1 ? "request"
+                   : info->arp_operation == 2 ? "reply"
+                                              : "other",
+                   info->arp_sender_mac, info->arp_target_mac);
         }
         printf("\n");
         return;

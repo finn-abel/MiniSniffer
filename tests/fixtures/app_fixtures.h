@@ -118,4 +118,28 @@ static const uint8_t TLS_MALFORMED[] = {
 static const uint8_t TLS_TRUNCATED[] = {0x16, 0x03, 0x03};
 static const uint8_t TLS_NO_MATCH[] = {0x17, 0x03, 0x03, 0x00, 0x01, 0x00};
 
+/*
+ * QUIC Initial long header: flags, version 1, an 8-byte DCID, an 8-byte SCID,
+ * then a placeholder token-length/length/packet-number tail that is never
+ * parsed by the conservative QUIC decoder.
+ */
+static const uint8_t QUIC_INITIAL_V1[] = {0xc3,
+                                          0x00, 0x00, 0x00, 0x01,
+                                          0x08,
+                                          0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+                                          0x08,
+                                          0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x01, 0x02,
+                                          0x00,
+                                          0x40, 0x00,
+                                          0x00};
+
+static const uint8_t QUIC_INITIAL_ZERO_LENGTH_CIDS[] = {0xc3, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00};
+
+static const uint8_t QUIC_VERSION_NEGOTIATION[] = {0xc3, 0x00, 0x00, 0x00, 0x00, 0x08,
+                                                   0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+
+static const uint8_t QUIC_LONG_HEADER_NOT_INITIAL[] = {0xd3, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00};
+
+static const uint8_t QUIC_SHORT_HEADER[] = {0x40, 0x01, 0x02, 0x03};
+
 #endif

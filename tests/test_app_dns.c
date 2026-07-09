@@ -8,10 +8,14 @@
 #define app_dns_decode_message app_dns_decode_message_white_box
 #define app_dns_decode_tcp_frame app_dns_decode_tcp_frame_white_box
 #define app_dns_decode_udp app_dns_decode_udp_white_box
+#define app_dns_decode_mdns_message app_dns_decode_mdns_message_white_box
+#define app_dns_decode_mdns_udp app_dns_decode_mdns_udp_white_box
 #include "../src/app_dns.c"
 #undef app_dns_decode_message
 #undef app_dns_decode_tcp_frame
 #undef app_dns_decode_udp
+#undef app_dns_decode_mdns_message
+#undef app_dns_decode_mdns_udp
 
 static void test_app_dns_decode_udp_query(void) {
     AppInfo info;
@@ -132,6 +136,28 @@ static void test_app_dns_rejects_implausible_and_truncated_questions(void) {
     assert(info.protocol == APP_PROTO_UNKNOWN);
 }
 
+static void test_app_dns_decode_mdns_udp_query(void) {
+    AppInfo info;
+
+    assert(app_dns_decode_mdns_udp(DNS_A_QUERY, sizeof(DNS_A_QUERY), &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_MDNS);
+    assert(info.dns_transaction_id == 0x1234);
+    assert(strcmp(info.dns_query_name, "www.example.com") == 0);
+    assert(info.dns_query_type == 1);
+}
+
+static void test_app_dns_decode_mdns_message_shares_dns_parser_failures(void) {
+    AppInfo info;
+
+    assert(app_dns_decode_mdns_message(DNS_MALFORMED_POINTER_LOOP,
+                                       sizeof(DNS_MALFORMED_POINTER_LOOP),
+                                       &info) == APP_DECODE_MALFORMED);
+    assert(info.protocol == APP_PROTO_UNKNOWN);
+
+    assert(app_dns_decode_mdns_message(DNS_TRUNCATED, sizeof(DNS_TRUNCATED), &info) ==
+           APP_DECODE_NEED_MORE);
+}
+
 static void test_app_dns_tcp_frame_edge_cases(void) {
     static const uint8_t one_byte[] = {0};
     static const uint8_t zero_frame[] = {0, 0};
@@ -153,6 +179,8 @@ int main(void) {
     test_app_dns_decode_no_match();
     test_app_dns_name_parser_rejects_invalid_inputs();
     test_app_dns_rejects_implausible_and_truncated_questions();
+    test_app_dns_decode_mdns_udp_query();
+    test_app_dns_decode_mdns_message_shares_dns_parser_failures();
     test_app_dns_tcp_frame_edge_cases();
 
     printf("All app DNS tests passed.\n");

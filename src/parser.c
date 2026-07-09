@@ -9,6 +9,14 @@
 #define ETHERNET_ETHERTYPE_OFFSET 12
 #define ETHERTYPE_IPV4 0x0800
 #define ETHERTYPE_IPV6 0x86dd
+#define ETHERTYPE_ARP 0x0806
+#define ARP_HEADER_LEN 8
+#define ARP_HTYPE_ETHERNET 1
+#define ARP_PTYPE_IPV4 0x0800
+#define ARP_HLEN_ETHERNET 6
+#define ARP_PLEN_IPV4 4
+#define ARP_ETHERNET_IPV4_LEN                                                                    \
+    (ARP_HEADER_LEN + 2 * ARP_HLEN_ETHERNET + 2 * ARP_PLEN_IPV4)
 #define IPV4_MIN_HEADER_LEN 20
 #define IPV4_VERSION 4
 #define IPV6_HEADER_LEN 40
@@ -33,7 +41,7 @@
 #define LINUX_SLL2_HEADER_LEN 20
 #define NULL_LOOPBACK_HEADER_LEN 4
 
-typedef enum { NETWORK_UNKNOWN = 0, NETWORK_IPV4, NETWORK_IPV6 } NetworkLayer;
+typedef enum { NETWORK_UNKNOWN = 0, NETWORK_IPV4, NETWORK_IPV6, NETWORK_ARP } NetworkLayer;
 
 typedef struct {
     unsigned char next_header;
@@ -319,6 +327,59 @@ static IPv6Transport find_ipv6_transport(const unsigned char *packet, size_t pac
     return result;
 }
 
+static void format_mac_address(const unsigned char *bytes, char *out, size_t out_size) {
+    snprintf(out, out_size, "%02x:%02x:%02x:%02x:%02x:%02x", bytes[0], bytes[1], bytes[2], bytes[3],
+             bytes[4], bytes[5]);
+}
+
+/*
+ * ARP is conservatively supported only for the overwhelmingly common
+ * Ethernet/IPv4 case (htype=1, ptype=0x0800, hlen=6, plen=4). Anything else is
+ * left as PROTO_OTHER rather than attempting variable hardware/protocol
+ * address length parsing.
+ */
+static int parse_arp_packet(const unsigned char *packet, size_t packet_len, size_t arp_offset,
+                            PacketInfo *info) {
+    const unsigned char *arp_header;
+    uint16_t htype;
+    uint16_t ptype;
+    unsigned char hlen;
+    unsigned char plen;
+
+    if (packet_len < arp_offset + ARP_ETHERNET_IPV4_LEN) {
+        return 0;
+    }
+
+    arp_header = packet + arp_offset;
+    htype = read_u16_network(arp_header);
+    ptype = read_u16_network(arp_header + 2);
+    hlen = arp_header[4];
+    plen = arp_header[5];
+    if (htype != ARP_HTYPE_ETHERNET || ptype != ARP_PTYPE_IPV4 || hlen != ARP_HLEN_ETHERNET ||
+        plen != ARP_PLEN_IPV4) {
+        return 0;
+    }
+
+    info->protocol = PROTO_ARP;
+    info->has_arp = 1;
+    info->arp_operation = read_u16_network(arp_header + 6);
+    format_mac_address(arp_header + ARP_HEADER_LEN, info->arp_sender_mac,
+                       sizeof(info->arp_sender_mac));
+    format_mac_address(arp_header + ARP_HEADER_LEN + ARP_HLEN_ETHERNET + ARP_PLEN_IPV4,
+                       info->arp_target_mac, sizeof(info->arp_target_mac));
+    if (inet_ntop(AF_INET, arp_header + ARP_HEADER_LEN + ARP_HLEN_ETHERNET, info->src_ip,
+                 sizeof(info->src_ip)) == NULL) {
+        return 1;
+    }
+    if (inet_ntop(AF_INET,
+                 arp_header + ARP_HEADER_LEN + 2 * ARP_HLEN_ETHERNET + ARP_PLEN_IPV4, info->dst_ip,
+                 sizeof(info->dst_ip)) == NULL) {
+        return 1;
+    }
+
+    return 0;
+}
+
 static int parse_ipv4_packet(const unsigned char *packet, size_t packet_len, size_t ip_offset,
                              PacketInfo *info) {
     const unsigned char *ip_header;
@@ -480,6 +541,9 @@ static NetworkLayer network_from_ethertype(uint16_t ethertype) {
     }
     if (ethertype == ETHERTYPE_IPV6) {
         return NETWORK_IPV6;
+    }
+    if (ethertype == ETHERTYPE_ARP) {
+        return NETWORK_ARP;
     }
 
     return NETWORK_UNKNOWN;
@@ -661,6 +725,9 @@ int parser_parse_packet_with_datalink(const unsigned char *packet, size_t packet
     }
     if (network == NETWORK_IPV6) {
         return parse_ipv6_packet(packet, packet_len, ip_offset, info);
+    }
+    if (network == NETWORK_ARP) {
+        return parse_arp_packet(packet, packet_len, ip_offset, info);
     }
 
     return 0;

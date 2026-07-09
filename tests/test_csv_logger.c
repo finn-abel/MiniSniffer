@@ -21,7 +21,9 @@ static const char *EXPECTED_PAYLOAD_CSV_HEADER =
 static const char *EXPECTED_APP_CSV_HEADER =
     "timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_protocol,http_"
     "method,http_host,http_path,http_status,dns_query,dns_type,dns_class,dns_rcode,tls_sni,tls_"
-    "alpn,tls_record_version,tls_client_version,app_source\n";
+    "alpn,tls_record_version,tls_client_version,app_source,dhcp_message_type,dhcp_transaction_id,"
+    "dhcp_client_mac,dhcp_client_ip,dhcp_your_ip,dhcp_server_ip,dhcp_requested_ip,quic_version,"
+    "quic_dcid,quic_scid,arp_operation,arp_sender_mac,arp_target_mac\n";
 
 static PacketInfo make_packet(void) {
     PacketInfo packet;
@@ -89,7 +91,8 @@ static void test_csv_logger_writes_app_schema(void) {
     assert(fgets(line, sizeof(line), file) != NULL);
     TEST_ASSERT_STRING_EQUAL(
         line, "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,http,"
-              "\"GET\",\"example.com\",\"/index.html\",,\"\",,,0,\"\",\"\",,,\"packet\"\n");
+              "\"GET\",\"example.com\",\"/index.html\",,\"\",,,0,\"\",\"\",,,\"packet\",,,\"\","
+              "\"\",\"\",\"\",\"\",,\"\",\"\",,\"\",\"\"\n");
 
     fclose(file);
     remove(TEST_CSV_LOG_PATH);
@@ -141,7 +144,8 @@ static void test_csv_logger_escapes_quotes_and_commas(void) {
     assert(strcmp(line,
                   "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,"
                   "http,\"GE\"\"T\",\"exa\"\"mple,com\",\"/"
-                  "a,\"\"b\"\"\",,\"\",,,0,\"\",\"h2,\"\"http/1.1\"\"\",,,\"packet\"\n") == 0);
+                  "a,\"\"b\"\"\",,\"\",,,0,\"\",\"h2,\"\"http/1.1\"\"\",,,\"packet\",,,\"\",\"\","
+                  "\"\",\"\",\"\",,\"\",\"\",,\"\",\"\"\n") == 0);
 
     fclose(file);
     remove(TEST_CSV_LOG_PATH);

@@ -8,6 +8,7 @@ static void test_protocol_to_string_returns_known_values(void) {
     assert(strcmp(protocol_to_string(PROTO_TCP), "TCP") == 0);
     assert(strcmp(protocol_to_string(PROTO_UDP), "UDP") == 0);
     assert(strcmp(protocol_to_string(PROTO_ICMP), "ICMP") == 0);
+    assert(strcmp(protocol_to_string(PROTO_ARP), "ARP") == 0);
     assert(strcmp(protocol_to_string(PROTO_OTHER), "OTHER") == 0);
 }
 
@@ -20,6 +21,8 @@ static void test_protocol_from_string_accepts_known_values(void) {
     assert(protocol == PROTO_UDP);
     assert(protocol_from_string("icmp", &protocol) == 0);
     assert(protocol == PROTO_ICMP);
+    assert(protocol_from_string("arp", &protocol) == 0);
+    assert(protocol == PROTO_ARP);
     assert(protocol_from_string("other", &protocol) == 0);
     assert(protocol == PROTO_OTHER);
 }

@@ -104,6 +104,12 @@ typedef struct {
     char filter_tls_alpn[MINISNIFFER_TLS_ALPN_LEN];
     DomainMatchMode domain_match_mode;
 
+    bool filter_dhcp_type_enabled;
+    uint8_t filter_dhcp_type;
+
+    bool filter_quic_version_enabled;
+    uint32_t filter_quic_version;
+
     int payload_display_enabled;
 
     int logging_enabled;

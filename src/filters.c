@@ -211,13 +211,18 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
          strcmp(app->http_method, config->filter_http_method) != 0)) {
         return 0;
     }
+    /*
+     * mDNS is wire-compatible with DNS and reuses the same dns_query_name /
+     * dns_query_type fields, so the DNS query/type filters apply to both.
+     */
     if (config->filter_dns_query_enabled &&
-        (app->protocol != APP_PROTO_DNS ||
+        ((app->protocol != APP_PROTO_DNS && app->protocol != APP_PROTO_MDNS) ||
          !domain_name_matches(config, app->dns_query_name, config->filter_dns_query))) {
         return 0;
     }
     if (config->filter_dns_type_enabled &&
-        (app->protocol != APP_PROTO_DNS || app->dns_query_type != config->filter_dns_type)) {
+        ((app->protocol != APP_PROTO_DNS && app->protocol != APP_PROTO_MDNS) ||
+         app->dns_query_type != config->filter_dns_type)) {
         return 0;
     }
     if (config->filter_tls_sni_enabled &&
@@ -227,6 +232,14 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
     }
     if (config->filter_tls_alpn_enabled &&
         (app->protocol != APP_PROTO_TLS || !app_has_alpn(app->tls_alpn, config->filter_tls_alpn))) {
+        return 0;
+    }
+    if (config->filter_dhcp_type_enabled &&
+        (app->protocol != APP_PROTO_DHCP || app->dhcp_message_type != config->filter_dhcp_type)) {
+        return 0;
+    }
+    if (config->filter_quic_version_enabled &&
+        (app->protocol != APP_PROTO_QUIC || app->quic_version != config->filter_quic_version)) {
         return 0;
     }
 
@@ -240,7 +253,8 @@ static int app_filters_enabled(const AppConfig *config) {
     return config->filter_app_enabled || config->filter_http_host_enabled ||
            config->filter_http_method_enabled || config->filter_dns_query_enabled ||
            config->filter_dns_type_enabled || config->filter_tls_sni_enabled ||
-           config->filter_tls_alpn_enabled;
+           config->filter_tls_alpn_enabled || config->filter_dhcp_type_enabled ||
+           config->filter_quic_version_enabled;
 }
 
 /*

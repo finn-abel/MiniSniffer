@@ -11,7 +11,7 @@
 static const char *EXPECTED_USAGE =
     "Usage: MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name>]\n"
     "       [--count <number>] [--quiet] [--verbose] [--no-color]\n"
-    "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n"
+    "       [--protocol <tcp|udp|icmp|arp|other>] [--port <number>]\n"
     "       [--host <ip>] [--payload] [--payload-bytes <number>]\n"
     "       [--payload-decode-bytes <number>] [--domain-match <mode>]\n"
     "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n"
@@ -19,9 +19,10 @@ static const char *EXPECTED_USAGE =
     "       [--json] [--flush-log <always|line|exit>]\n"
     "       [--decode-app] [--reassemble] [--max-flows <number>]\n"
     "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n"
-    "       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]\n"
-    "       [--dns-query <name>] [--dns-type <type>] [--tls-sni <host>]\n"
-    "       [--tls-alpn <protocol>] [--stats]\n";
+    "       [--app <http|dns|tls|dhcp|mdns|quic>] [--http-host <host>]\n"
+    "       [--http-method <method>] [--dns-query <name>] [--dns-type <type>]\n"
+    "       [--tls-sni <host>] [--tls-alpn <protocol>]\n"
+    "       [--dhcp-type <type>] [--quic-version <version>] [--stats]\n";
 
 typedef void (*CaptureFunction)(void *context);
 
@@ -349,6 +350,58 @@ static void test_cli_parse_args_sets_app_filters(void) {
     assert(config.domain_match_mode == DOMAIN_MATCH_EXACT);
 }
 
+static void test_cli_parse_args_sets_arp_protocol_filter(void) {
+    AppConfig config;
+    char *argv[] = {"MiniSniffer", "--protocol", "arp"};
+
+    config_init_defaults(&config);
+
+    assert(cli_parse_args(3, argv, &config) == 0);
+    assert(config.filter_protocol_enabled == 1);
+    assert(config.filter_protocol == PROTO_ARP);
+}
+
+static void test_cli_parse_args_accepts_dhcp_mdns_quic_app_filters(void) {
+    AppConfig config;
+    char *app_dhcp[] = {"MiniSniffer", "--decode-app", "--app", "dhcp"};
+    char *app_mdns[] = {"MiniSniffer", "--decode-app", "--app", "mdns"};
+    char *app_quic[] = {"MiniSniffer", "--decode-app", "--app", "quic"};
+    char *dhcp_type_name[] = {"MiniSniffer", "--decode-app", "--dhcp-type", "discover"};
+    char *dhcp_type_numeric[] = {"MiniSniffer", "--decode-app", "--dhcp-type", "5"};
+    char *quic_version_decimal[] = {"MiniSniffer", "--decode-app", "--quic-version", "1"};
+    char *quic_version_hex[] = {"MiniSniffer", "--decode-app", "--quic-version", "0x1"};
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, app_dhcp, &config) == 0);
+    assert(config.filter_app_protocol == APP_PROTO_DHCP);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, app_mdns, &config) == 0);
+    assert(config.filter_app_protocol == APP_PROTO_MDNS);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, app_quic, &config) == 0);
+    assert(config.filter_app_protocol == APP_PROTO_QUIC);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, dhcp_type_name, &config) == 0);
+    assert(config.filter_dhcp_type_enabled == true);
+    assert(config.filter_dhcp_type == 1);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, dhcp_type_numeric, &config) == 0);
+    assert(config.filter_dhcp_type == 5);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, quic_version_decimal, &config) == 0);
+    assert(config.filter_quic_version_enabled == true);
+    assert(config.filter_quic_version == 1);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, quic_version_hex, &config) == 0);
+    assert(config.filter_quic_version == 1);
+}
+
 static void test_cli_parse_args_accepts_combined_filters(void) {
     AppConfig config;
     char *argv[] = {"MiniSniffer", "--protocol", "tcp", "--port", "443", "--count", "10"};
@@ -522,6 +575,20 @@ static void assert_cli_rejects(int argc, char **argv) {
     assert(cli_parse_args(argc, argv, &config) != 0);
 }
 
+static void test_cli_parse_args_rejects_invalid_dhcp_and_quic_filters(void) {
+    char *bad_app[] = {"MiniSniffer", "--decode-app", "--app", "bootp"};
+    char *bad_dhcp_type[] = {"MiniSniffer", "--decode-app", "--dhcp-type", "nope"};
+    char *bad_quic_version[] = {"MiniSniffer", "--decode-app", "--quic-version", "nope"};
+    char *dhcp_without_decode_app[] = {"MiniSniffer", "--dhcp-type", "discover"};
+    char *quic_without_decode_app[] = {"MiniSniffer", "--quic-version", "1"};
+
+    assert_cli_rejects(4, bad_app);
+    assert_cli_rejects(4, bad_dhcp_type);
+    assert_cli_rejects(4, bad_quic_version);
+    assert_cli_rejects(2, dhcp_without_decode_app);
+    assert_cli_rejects(2, quic_without_decode_app);
+}
+
 static void test_cli_parse_args_rejects_all_missing_values(void) {
     char *count[] = {"MiniSniffer", "--count"};
     char *protocol[] = {"MiniSniffer", "--protocol"};
@@ -546,6 +613,8 @@ static void test_cli_parse_args_rejects_all_missing_values(void) {
     char *flush_log[] = {"MiniSniffer", "--flush-log"};
     char *payload_decode_bytes[] = {"MiniSniffer", "--payload-decode-bytes"};
     char *domain_match[] = {"MiniSniffer", "--domain-match"};
+    char *dhcp_type[] = {"MiniSniffer", "--dhcp-type"};
+    char *quic_version[] = {"MiniSniffer", "--quic-version"};
 
     assert_cli_rejects(2, count);
     assert_cli_rejects(2, protocol);
@@ -570,6 +639,8 @@ static void test_cli_parse_args_rejects_all_missing_values(void) {
     assert_cli_rejects(2, flush_log);
     assert_cli_rejects(2, payload_decode_bytes);
     assert_cli_rejects(2, domain_match);
+    assert_cli_rejects(2, dhcp_type);
+    assert_cli_rejects(2, quic_version);
 }
 
 static void test_cli_parse_args_rejects_oversized_strings(void) {
@@ -710,6 +781,8 @@ int main(void) {
     test_cli_parse_args_sets_app_decode_options();
     test_cli_parse_args_accepts_supported_app_examples();
     test_cli_parse_args_sets_app_filters();
+    test_cli_parse_args_sets_arp_protocol_filter();
+    test_cli_parse_args_accepts_dhcp_mdns_quic_app_filters();
     test_cli_parse_args_accepts_combined_filters();
     test_cli_parse_args_rejects_unknown_flag();
     test_cli_parse_args_rejects_missing_value();
@@ -722,6 +795,7 @@ int main(void) {
     test_cli_parse_args_rejects_invalid_app_decode_options();
     test_cli_parse_args_rejects_app_filters_without_decode_app();
     test_cli_parse_args_rejects_invalid_app_filters();
+    test_cli_parse_args_rejects_invalid_dhcp_and_quic_filters();
     test_cli_parse_args_rejects_all_missing_values();
     test_cli_parse_args_rejects_oversized_strings();
     test_cli_parse_args_accepts_dns_types_and_uppercase_hex();

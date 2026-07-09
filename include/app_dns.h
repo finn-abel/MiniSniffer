@@ -24,4 +24,16 @@ AppDecodeResult app_dns_decode_udp(const uint8_t *data, size_t length, AppInfo *
  */
 AppDecodeResult app_dns_decode_tcp_frame(const uint8_t *data, size_t length, AppInfo *out);
 
+/*
+ * Decodes one mDNS message (RFC 6762). mDNS reuses the DNS wire format and the
+ * same bounded compressed-name parser; only the reported AppProtocol and
+ * summary label differ from app_dns_decode_message.
+ */
+AppDecodeResult app_dns_decode_mdns_message(const uint8_t *data, size_t length, AppInfo *out);
+
+/*
+ * Decodes an mDNS message carried directly in one UDP payload on port 5353.
+ */
+AppDecodeResult app_dns_decode_mdns_udp(const uint8_t *data, size_t length, AppInfo *out);
+
 #endif

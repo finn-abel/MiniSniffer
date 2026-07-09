@@ -460,6 +460,66 @@ static void test_parser_parse_packet_with_linux_cooked_datalinks(void) {
 #endif
 }
 
+static void test_parser_parse_packet_parses_arp_request(void) {
+    const unsigned char packet[] = {
+        /* Ethernet header: dst mac, src mac, ethertype=ARP */
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x08, 0x06,
+        /* ARP: htype=1 ptype=0x0800 hlen=6 plen=4 op=1 (request) */
+        0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00, 0x01,
+        /* sender mac + sender ip */
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0xc0, 0xa8, 0x01, 0x0a,
+        /* target mac (zero for a request) + target ip */
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8, 0x01, 0x01};
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_ARP);
+    assert(info.has_arp == 1);
+    assert(info.arp_operation == 1);
+    assert(strcmp(info.src_ip, "192.168.1.10") == 0);
+    assert(strcmp(info.dst_ip, "192.168.1.1") == 0);
+    assert(strcmp(info.arp_sender_mac, "00:11:22:33:44:55") == 0);
+    assert(strcmp(info.arp_target_mac, "00:00:00:00:00:00") == 0);
+}
+
+static void test_parser_parse_packet_parses_arp_reply(void) {
+    const unsigned char packet[] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0xaa, 0xbb, 0xcc,
+                                    0xdd, 0xee, 0xff, 0x08, 0x06, 0x00, 0x01, 0x08, 0x00,
+                                    0x06, 0x04, 0x00, 0x02, 0xaa, 0xbb, 0xcc, 0xdd, 0xee,
+                                    0xff, 0xc0, 0xa8, 0x01, 0x01, 0x00, 0x11, 0x22, 0x33,
+                                    0x44, 0x55, 0xc0, 0xa8, 0x01, 0x0a};
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_ARP);
+    assert(info.arp_operation == 2);
+    assert(strcmp(info.src_ip, "192.168.1.1") == 0);
+    assert(strcmp(info.dst_ip, "192.168.1.10") == 0);
+}
+
+static void test_parser_conservatively_ignores_non_ethernet_ipv4_arp(void) {
+    /* htype=6 (IEEE 802) instead of 1 (Ethernet): left as OTHER. */
+    const unsigned char packet[] = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x08, 0x06,
+        0x00, 0x06, 0x08, 0x00, 0x06, 0x04, 0x00, 0x01, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+        0xc0, 0xa8, 0x01, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8, 0x01, 0x01};
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_OTHER);
+    assert(info.has_arp == 0);
+}
+
+static void test_parser_marks_short_arp_frame_as_other(void) {
+    const unsigned char packet[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x11,
+                                    0x22, 0x33, 0x44, 0x55, 0x08, 0x06, 0x00, 0x01};
+    PacketInfo info;
+
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.protocol == PROTO_OTHER);
+    assert(info.has_arp == 0);
+}
+
 static void test_parser_reports_supported_datalinks(void) {
     assert(parser_supports_datalink(DLT_EN10MB));
     assert(parser_supports_datalink(DLT_RAW));
@@ -503,6 +563,10 @@ int main(void) {
     test_parser_extracts_icmpv6_summary_and_payload();
     test_parser_parse_packet_with_null_and_loopback_datalinks();
     test_parser_parse_packet_with_linux_cooked_datalinks();
+    test_parser_parse_packet_parses_arp_request();
+    test_parser_parse_packet_parses_arp_reply();
+    test_parser_conservatively_ignores_non_ethernet_ipv4_arp();
+    test_parser_marks_short_arp_frame_as_other();
     test_parser_reports_supported_datalinks();
 
     printf("All parser tests passed.\n");

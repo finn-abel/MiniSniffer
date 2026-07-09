@@ -21,6 +21,7 @@ static void test_stats_init_clears_counters(void) {
     stats.tcp_packets = 99;
     stats.udp_packets = 99;
     stats.icmp_packets = 99;
+    stats.arp_packets = 99;
     stats.other_packets = 99;
     stats.total_bytes = 99;
     stats.ipv4_fragments_seen = 99;
@@ -40,6 +41,7 @@ static void test_stats_init_clears_counters(void) {
     assert(stats.tcp_packets == 0);
     assert(stats.udp_packets == 0);
     assert(stats.icmp_packets == 0);
+    assert(stats.arp_packets == 0);
     assert(stats.other_packets == 0);
     assert(stats.total_bytes == 0);
     assert(stats.ipv4_fragments_seen == 0);
@@ -59,6 +61,7 @@ static void test_stats_update_tracks_protocol_counts_and_bytes(void) {
     PacketInfo tcp = make_packet(PROTO_TCP, 100);
     PacketInfo udp = make_packet(PROTO_UDP, 200);
     PacketInfo icmp = make_packet(PROTO_ICMP, 300);
+    PacketInfo arp = make_packet(PROTO_ARP, 50);
     PacketInfo other = make_packet(PROTO_OTHER, 400);
 
     tcp.app_decode_status = APP_DECODE_STATUS_DECODED;
@@ -69,14 +72,16 @@ static void test_stats_update_tracks_protocol_counts_and_bytes(void) {
     stats_update(&stats, &tcp);
     stats_update(&stats, &udp);
     stats_update(&stats, &icmp);
+    stats_update(&stats, &arp);
     stats_update(&stats, &other);
 
-    assert(stats.total_packets == 4);
+    assert(stats.total_packets == 5);
     assert(stats.tcp_packets == 1);
     assert(stats.udp_packets == 1);
     assert(stats.icmp_packets == 1);
+    assert(stats.arp_packets == 1);
     assert(stats.other_packets == 1);
-    assert(stats.total_bytes == 1000);
+    assert(stats.total_bytes == 1050);
     assert(stats.app_decode_decoded == 1);
     assert(stats.app_decode_no_match == 1);
     assert(stats.app_decode_need_more == 1);

@@ -18,12 +18,15 @@ writes CSV logs, and can report capture statistics when the run completes.
 - Automatic default interface selection
 - Explicit interface selection with `--interface`
 - IPv4 and IPv6 packet parsing for TCP, UDP, ICMP/ICMPv6, and other protocols
+- Conservative ARP summary metadata (operation, sender/target IP and MAC) for
+  the common Ethernet/IPv4 case
 - Conservative IPv6 extension-header handling before TCP/UDP/ICMPv6 parsing
 - Bounded IPv4 fragment reassembly for transport and app decoding
 - Protocol, port, and IPv4/IPv6 host filters
 - Bounded packet payload inspection
 - Literal text and hex payload filters
-- Packet-local HTTP, DNS, and TLS ClientHello metadata decoding
+- Packet-local HTTP, DNS, TLS ClientHello, DHCP, mDNS, and conservative QUIC
+  Initial-packet metadata decoding
 - Bounded TCP stream reassembly for HTTP, DNS-over-TCP, and TLS ClientHello metadata
 - Application metadata filters
 - CSV logging for displayed packets
@@ -125,7 +128,7 @@ sudo ./MiniSniffer --protocol tcp --payload --payload-bytes 80 --payload-contain
 ```text
 Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name>]
        [--count <number>] [--quiet] [--verbose] [--no-color]
-       [--protocol <tcp|udp|icmp|other>] [--port <number>]
+       [--protocol <tcp|udp|icmp|arp|other>] [--port <number>]
        [--host <ip>] [--payload] [--payload-bytes <number>]
        [--payload-decode-bytes <number>] [--domain-match <mode>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
@@ -133,9 +136,10 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
        [--json] [--flush-log <always|line|exit>]
        [--decode-app] [--reassemble] [--max-flows <number>]
        [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]
-       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]
-       [--dns-query <name>] [--dns-type <type>] [--tls-sni <host>]
-       [--tls-alpn <protocol>] [--stats]
+       [--app <http|dns|tls|dhcp|mdns|quic>] [--http-host <host>]
+       [--http-method <method>] [--dns-query <name>] [--dns-type <type>]
+       [--tls-sni <host>] [--tls-alpn <protocol>]
+       [--dhcp-type <type>] [--quic-version <version>] [--stats]
 ```
 
 ## Options
@@ -150,7 +154,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--quiet` | Suppress startup and stop summaries. Packet output and errors still print. |
 | `--verbose` | Print the full startup configuration summary before capture. |
 | `--no-color` | Disable terminal color output. Current MiniSniffer output is plain text. |
-| `--protocol <tcp|udp|icmp|other>` | Display only packets matching the selected protocol. |
+| `--protocol <tcp|udp|icmp|arp|other>` | Display only packets matching the selected protocol. |
 | `--port <number>` | Display only TCP/UDP packets where the source or destination port matches. |
 | `--host <ip>` | Display only packets where the source or destination IPv4 or IPv6 address matches. |
 | `--payload` | Print a bounded hex and ASCII payload preview for displayed packets. |
@@ -166,13 +170,15 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--max-flows <number>` | Set the maximum number of tracked TCP flows for reassembly. Default is 512; maximum is 1024. Requires `--reassemble`. |
 | `--stream-buffer-bytes <number>` | Set the per-direction TCP stream buffer cap. Default is 32768 bytes; maximum is 1048576 bytes. Requires `--reassemble`. |
 | `--flow-timeout <seconds>` | Evict flows idle for at least this many seconds. Default is 60 seconds. Requires `--reassemble`. |
-| `--app <http|dns|tls>` | Display only packets with decoded app metadata for the selected protocol. Requires `--decode-app`. |
+| `--app <http|dns|tls|dhcp|mdns|quic>` | Display only packets with decoded app metadata for the selected protocol. Requires `--decode-app`. |
 | `--http-host <host>` | Display only decoded HTTP packets with a matching Host header. Requires `--decode-app`. |
 | `--http-method <method>` | Display only decoded HTTP requests with a matching method. Requires `--decode-app`. |
-| `--dns-query <name>` | Display only decoded DNS packets with a matching first query name. Requires `--decode-app`. |
-| `--dns-type <type>` | Display only decoded DNS packets with a matching first query type, such as `A` or `AAAA`. Requires `--decode-app`. |
+| `--dns-query <name>` | Display only decoded DNS or mDNS packets with a matching first query name. Requires `--decode-app`. |
+| `--dns-type <type>` | Display only decoded DNS or mDNS packets with a matching first query type, such as `A` or `AAAA`. Requires `--decode-app`. |
 | `--tls-sni <host>` | Display only decoded TLS ClientHello packets with a matching SNI hostname. Requires `--decode-app`. |
 | `--tls-alpn <protocol>` | Display only decoded TLS ClientHello packets advertising the ALPN protocol. Requires `--decode-app`. |
+| `--dhcp-type <type>` | Display only decoded DHCP packets with a matching message type, such as `discover`, `offer`, `request`, or `ack`. Requires `--decode-app`. |
+| `--quic-version <version>` | Display only decoded QUIC Initial packets with a matching version, decimal or `0x`-prefixed hex. Requires `--decode-app`. |
 | `--domain-match <normalized|exact|idna>` | Set HTTP Host, DNS query, and TLS SNI domain matching mode. Default is `normalized`. `idna` requires `WITH_LIBIDN2=1`. |
 | `--log <file>` | Write displayed packets to a CSV file. |
 | `--flush-log <always|line|exit>` | Control CSV flush timing. Default is `line`, preserving the current row-by-row safe behavior. |
@@ -267,6 +273,10 @@ sudo ./MiniSniffer --decode-app --app http --http-host example.com
 sudo ./MiniSniffer --decode-app --app dns --dns-query example.com --dns-type A
 sudo ./MiniSniffer --decode-app --app tls --tls-sni example.com --tls-alpn h2
 sudo ./MiniSniffer --decode-app --reassemble --app tls --tls-sni example.com --count 5
+sudo ./MiniSniffer --decode-app --app mdns --dns-query printer.local
+sudo ./MiniSniffer --decode-app --app dhcp --dhcp-type discover
+sudo ./MiniSniffer --decode-app --app quic --quic-version 0x00000001
+sudo ./MiniSniffer --protocol arp --count 10
 ```
 
 ## Output
@@ -289,6 +299,13 @@ the ICMPv6 type and code when the common header is captured:
 
 ```text
 [005] ICMPv6 2001:db8::1 -> 2001:db8::2 size=62 type=128 code=0
+```
+
+ARP packets show the operation and sender/target MAC addresses; sender and
+target IPv4 addresses are shown as the usual source and destination fields:
+
+```text
+[006] ARP   192.168.1.10 -> 192.168.1.1 size=42 op=request sender_mac=00:11:22:33:44:55 target_mac=00:00:00:00:00:00
 ```
 
 With `--payload`, MiniSniffer prints a bounded payload preview below each
@@ -337,6 +354,9 @@ Each displayed packet is one JSON object with `timestamp`, `packet_number`,
 and `app_source`. Payload previews include bounded `length`, `preview_length`,
 `truncated`, `hex`, and `ascii` fields when `--payload` is enabled. App metadata
 follows the same packet-local or flow-derived source as text and CSV output.
+ARP packets include an additional `arp` object with `operation`, `sender_mac`,
+`sender_ip`, `target_mac`, and `target_ip` fields; this field is absent for
+non-ARP packets.
 
 In JSON mode, startup, stop, flow-event, and stats text are suppressed on
 stdout so consumers can parse stdout as JSON Lines. Errors still go to stderr.
@@ -372,12 +392,20 @@ Without `--reassemble`, application decoding is packet-local:
 - UDP DNS is decoded packet-locally.
 - DNS over TCP is decoded only when the full two-byte length-prefixed DNS frame is inside one packet.
 - TLS is decoded only when the full ClientHello record is inside one packet.
+- mDNS (UDP port 5353) reuses the same DNS message parser and is always
+  packet-local; it is not eligible for TCP stream reassembly.
+- DHCP (UDP ports 67/68) requires the fixed BOOTP header plus the DHCP magic
+  cookie inside one packet; it is always packet-local.
+- QUIC Initial packets (UDP port 443/8443) are decoded packet-locally and only
+  as far as the Source Connection ID; MiniSniffer never removes header
+  protection or decrypts anything.
 
 With `--reassemble`, TCP streams are reassembled conservatively with bounded
 per-direction buffers. HTTP headers, TLS ClientHello records, and DNS-over-TCP
 frames can be decoded after they span multiple in-order or simply reordered TCP
 segments. Data that exceeds configured memory caps is dropped instead of growing
-without bound.
+without bound. mDNS, DHCP, and QUIC are UDP-only and never participate in TCP
+stream reassembly.
 
 IPv4 fragments are tracked independently from TCP stream reassembly. Fragments
 are keyed by source, destination, protocol, and IPv4 identification, then held
@@ -425,11 +453,15 @@ Payload CSV values are bounded by `--payload-bytes`.
 When `--decode-app` is enabled, CSV logs use the stable application schema:
 
 ```text
-timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source
+timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source,dhcp_message_type,dhcp_transaction_id,dhcp_client_mac,dhcp_client_ip,dhcp_your_ip,dhcp_server_ip,dhcp_requested_ip,quic_version,quic_dcid,quic_scid,arp_operation,arp_sender_mac,arp_target_mac
 ```
 
 `app_source` is `packet` for packet-local metadata, `flow` for stream-derived
-flow metadata, or `none` when no app metadata is available.
+flow metadata, or `none` when no app metadata is available. mDNS rows reuse the
+`dns_query`/`dns_type`/`dns_class`/`dns_rcode` columns with `app_protocol` set
+to `mdns`, since mDNS is wire-compatible with DNS. The `dhcp_*`, `quic_*`, and
+`arp_*` columns were added additively at the end of the schema; `arp_*` columns
+are populated from packet-level ARP metadata regardless of `app_protocol`.
 
 CSV app rows keep the same metadata columns for compatibility. Decode status is
 reported in text, JSON, and stats output.
@@ -458,6 +490,7 @@ The stats summary includes:
 - TCP packet count
 - UDP packet count
 - ICMP packet count
+- ARP packet count
 - Other packet count
 - Total displayed bytes
 - Average displayed packet size
@@ -642,6 +675,11 @@ Important modules:
 - `src/parser.c` selects supported link-layer offsets and parses IPv4/IPv6 packet metadata.
 - `src/filters.c` applies protocol, port, host, payload, and app filters.
 - `src/app_decoder.c` dispatches packet-local and stream app decoders.
+- `src/app_dhcp.c` decodes DHCP metadata over UDP ports 67/68.
+- `src/app_dns.c` decodes DNS query metadata and, via the same parser, mDNS
+  query metadata over UDP port 5353.
+- `src/app_quic.c` decodes conservative QUIC Initial-packet version/DCID/SCID
+  metadata over UDP ports 443/8443.
 - `src/ipv4_frag.c` handles bounded IPv4 fragment reassembly.
 - `src/tcp_reassembly.c` and `src/stream_buffer.c` handle bounded stream assembly.
 - `src/flow.c` tracks bounded flow state and app classification.
@@ -664,7 +702,11 @@ Important modules:
   extension headers, and no-next-header packets are not decoded at transport
   or app layers.
 - App decoding is intentionally limited to cleartext HTTP/1.x metadata, DNS
-  query metadata, and TLS ClientHello metadata.
+  and mDNS query metadata, TLS ClientHello metadata, DHCP metadata from the
+  fixed BOOTP header and a small set of options, and conservative QUIC Initial
+  packet version/DCID/SCID metadata only.
+- ARP support is limited to the common Ethernet/IPv4 shape; other hardware or
+  protocol address types are left as `OTHER`.
 - TCP reassembly is conservative and bounded; it is not a full TCP stack.
 - HTTP Host, DNS query, and TLS SNI filters default to normalized domain
   matching: ASCII case-insensitive comparison with one trailing root dot

@@ -1,8 +1,10 @@
 #include <string.h>
 
 #include "app_decoder.h"
+#include "app_dhcp.h"
 #include "app_dns.h"
 #include "app_http.h"
+#include "app_quic.h"
 #include "app_tls.h"
 
 #define HTTP_PORT 80
@@ -12,6 +14,11 @@
 #define TLS_PORT 443
 #define TLS_ALT_PORT 8443
 #define TLS_RECORD_HANDSHAKE 0x16
+#define DHCP_SERVER_PORT 67
+#define DHCP_CLIENT_PORT 68
+#define MDNS_PORT 5353
+#define QUIC_PORT 443
+#define QUIC_ALT_PORT 8443
 
 /*
  * Always reset caller-owned AppInfo before attempting a decode so failed or
@@ -107,6 +114,15 @@ AppDecodeResult app_decode_buffer(AppProtocol preferred, const uint8_t *data, si
     if (preferred == APP_PROTO_DNS) {
         return preferred_result(app_dns_decode_message(data, length, out), preferred);
     }
+    if (preferred == APP_PROTO_MDNS) {
+        return preferred_result(app_dns_decode_mdns_message(data, length, out), preferred);
+    }
+    if (preferred == APP_PROTO_DHCP) {
+        return preferred_result(app_dhcp_decode_udp(data, length, out), preferred);
+    }
+    if (preferred == APP_PROTO_QUIC) {
+        return preferred_result(app_quic_decode_initial(data, length, out), preferred);
+    }
 
     /*
      * Unknown buffers are sniffed in a conservative order. HTTP and TLS have
@@ -170,6 +186,23 @@ AppDecodeResult app_decode_packet(const PacketInfo *packet, AppInfo *out) {
         return preferred_result(
             app_dns_decode_tcp_frame(packet->payload, packet->payload_decode_length, out),
             APP_PROTO_DNS);
+    }
+    if (packet->protocol == PROTO_UDP && port_matches(packet, MDNS_PORT)) {
+        return preferred_result(
+            app_dns_decode_mdns_udp(packet->payload, packet->payload_decode_length, out),
+            APP_PROTO_MDNS);
+    }
+    if (packet->protocol == PROTO_UDP &&
+        (port_matches(packet, DHCP_SERVER_PORT) || port_matches(packet, DHCP_CLIENT_PORT))) {
+        return preferred_result(
+            app_dhcp_decode_udp(packet->payload, packet->payload_decode_length, out),
+            APP_PROTO_DHCP);
+    }
+    if (packet->protocol == PROTO_UDP &&
+        (port_matches(packet, QUIC_PORT) || port_matches(packet, QUIC_ALT_PORT))) {
+        return preferred_result(
+            app_quic_decode_initial(packet->payload, packet->payload_decode_length, out),
+            APP_PROTO_QUIC);
     }
 
     if (payload_starts_with_http(packet->payload, packet->payload_decode_length)) {

@@ -329,6 +329,91 @@ static void test_app_filter_mismatch_paths(void) {
     assert(!filters_match(&config, &context));
 }
 
+static void test_dns_filters_also_apply_to_mdns(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo app;
+    FilterContext context;
+
+    memset(&app, 0, sizeof(app));
+    app.protocol = APP_PROTO_MDNS;
+    snprintf(app.dns_query_name, sizeof(app.dns_query_name), "printer.local");
+    app.dns_query_type = 1;
+
+    memset(&context, 0, sizeof(context));
+    context.packet = &packet;
+    context.packet_app = &app;
+
+    config_init_defaults(&config);
+    config.filter_dns_query_enabled = true;
+    snprintf(config.filter_dns_query, sizeof(config.filter_dns_query), "printer.local");
+    assert(filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_dns_type_enabled = true;
+    config.filter_dns_type = 1;
+    assert(filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    config.filter_dns_type_enabled = true;
+    config.filter_dns_type = 28;
+    assert(!filters_match(&config, &context));
+}
+
+static void test_dhcp_type_filter_matches_only_dhcp_with_type(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo app;
+    FilterContext context;
+
+    memset(&app, 0, sizeof(app));
+    app.protocol = APP_PROTO_DHCP;
+    app.dhcp_message_type = 1;
+
+    memset(&context, 0, sizeof(context));
+    context.packet = &packet;
+    context.packet_app = &app;
+
+    config_init_defaults(&config);
+    config.filter_dhcp_type_enabled = true;
+    config.filter_dhcp_type = 1;
+    assert(filters_match(&config, &context));
+
+    config.filter_dhcp_type = 5;
+    assert(!filters_match(&config, &context));
+
+    app.protocol = APP_PROTO_HTTP;
+    config.filter_dhcp_type = 1;
+    assert(!filters_match(&config, &context));
+}
+
+static void test_quic_version_filter_matches_only_quic_with_version(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo app;
+    FilterContext context;
+
+    memset(&app, 0, sizeof(app));
+    app.protocol = APP_PROTO_QUIC;
+    app.quic_version = 1;
+
+    memset(&context, 0, sizeof(context));
+    context.packet = &packet;
+    context.packet_app = &app;
+
+    config_init_defaults(&config);
+    config.filter_quic_version_enabled = true;
+    config.filter_quic_version = 1;
+    assert(filters_match(&config, &context));
+
+    config.filter_quic_version = 2;
+    assert(!filters_match(&config, &context));
+
+    app.protocol = APP_PROTO_TLS;
+    config.filter_quic_version = 1;
+    assert(!filters_match(&config, &context));
+}
+
 static void test_domain_filter_handles_left_dot_and_character_mismatch(void) {
     AppConfig config;
     PacketInfo packet = make_packet();
@@ -360,6 +445,9 @@ int main(void) {
     test_filters_reject_invalid_contexts();
     test_transport_and_payload_filter_failures();
     test_app_filter_mismatch_paths();
+    test_dns_filters_also_apply_to_mdns();
+    test_dhcp_type_filter_matches_only_dhcp_with_type();
+    test_quic_version_filter_matches_only_quic_with_version();
     test_domain_filter_handles_left_dot_and_character_mismatch();
 
     printf("All filters tests passed.\n");

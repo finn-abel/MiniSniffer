@@ -27,6 +27,12 @@ static const char *app_protocol_to_string(AppProtocol protocol) {
         return "dns";
     case APP_PROTO_TLS:
         return "tls";
+    case APP_PROTO_DHCP:
+        return "dhcp";
+    case APP_PROTO_MDNS:
+        return "mdns";
+    case APP_PROTO_QUIC:
+        return "quic";
     case APP_PROTO_UNKNOWN:
     default:
         return "";
@@ -140,8 +146,10 @@ static int write_header(const char *path) {
                 log_file,
                 "timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_"
                 "protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,"
-                "dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source\n") <
-            0) {
+                "dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source,dhcp_"
+                "message_type,dhcp_transaction_id,dhcp_client_mac,dhcp_client_ip,dhcp_your_ip,dhcp_"
+                "server_ip,dhcp_requested_ip,quic_version,quic_dcid,quic_scid,arp_operation,arp_"
+                "sender_mac,arp_target_mac\n") < 0) {
             fprintf(stderr, "Error: failed to write CSV header to '%s'.\n", path);
             return 1;
         }
@@ -331,6 +339,42 @@ static void write_app_packet(const PacketInfo *packet, const AppInfo *app, const
     write_hex_version(row_app->tls_client_version);
     fprintf(log_file, ",");
     write_csv_text(log_file, normalized_app_source(app, app_source));
+    fprintf(log_file, ",");
+    if (row_app->dhcp_message_type != 0) {
+        fprintf(log_file, "%u", (unsigned int)row_app->dhcp_message_type);
+    }
+    fprintf(log_file, ",");
+    if (row_app->protocol == APP_PROTO_DHCP) {
+        fprintf(log_file, "0x%08x", (unsigned int)row_app->dhcp_transaction_id);
+    }
+    fprintf(log_file, ",");
+    write_csv_text(log_file, row_app->dhcp_client_mac);
+    fprintf(log_file, ",");
+    write_csv_text(log_file, row_app->dhcp_client_ip);
+    fprintf(log_file, ",");
+    write_csv_text(log_file, row_app->dhcp_your_ip);
+    fprintf(log_file, ",");
+    write_csv_text(log_file, row_app->dhcp_server_ip);
+    fprintf(log_file, ",");
+    write_csv_text(log_file, row_app->dhcp_requested_ip);
+    fprintf(log_file, ",");
+    if (row_app->protocol == APP_PROTO_QUIC) {
+        fprintf(log_file, "0x%08x", (unsigned int)row_app->quic_version);
+    }
+    fprintf(log_file, ",");
+    write_csv_text(log_file, row_app->quic_dcid);
+    fprintf(log_file, ",");
+    write_csv_text(log_file, row_app->quic_scid);
+    fprintf(log_file, ",");
+    if (packet->has_arp != 0) {
+        fprintf(log_file, "%s", packet->arp_operation == 1   ? "request"
+                                : packet->arp_operation == 2 ? "reply"
+                                                              : "other");
+    }
+    fprintf(log_file, ",");
+    write_csv_text(log_file, packet->arp_sender_mac);
+    fprintf(log_file, ",");
+    write_csv_text(log_file, packet->arp_target_mac);
     fprintf(log_file, "\n");
 }
 

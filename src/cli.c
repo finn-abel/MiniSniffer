@@ -15,7 +15,7 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "Usage: %s [--help] [--version] [--list-interfaces] [--interface <name>]\n",
             name);
     fprintf(stream, "       [--count <number>] [--quiet] [--verbose] [--no-color]\n");
-    fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
+    fprintf(stream, "       [--protocol <tcp|udp|icmp|arp|other>] [--port <number>]\n");
     fprintf(stream, "       [--host <ip>] [--payload] [--payload-bytes <number>]\n");
     fprintf(stream, "       [--payload-decode-bytes <number>] [--domain-match <mode>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
@@ -24,9 +24,10 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--decode-app] [--reassemble] [--max-flows <number>]\n");
     fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n");
     fprintf(stream,
-            "       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]\n");
-    fprintf(stream, "       [--dns-query <name>] [--dns-type <type>] [--tls-sni <host>]\n");
-    fprintf(stream, "       [--tls-alpn <protocol>] [--stats]\n");
+            "       [--app <http|dns|tls|dhcp|mdns|quic>] [--http-host <host>]\n");
+    fprintf(stream, "       [--http-method <method>] [--dns-query <name>] [--dns-type <type>]\n");
+    fprintf(stream, "       [--tls-sni <host>] [--tls-alpn <protocol>]\n");
+    fprintf(stream, "       [--dhcp-type <type>] [--quic-version <version>] [--stats]\n");
 }
 
 void cli_print_usage(const char *program_name) {
@@ -184,6 +185,18 @@ static int fail_invalid_dns_type(const char *program_name, const char *value) {
     return 1;
 }
 
+static int fail_invalid_dhcp_type(const char *program_name, const char *value) {
+    fprintf(stderr, "Error: invalid DHCP message type: %s.\n", value);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
+static int fail_invalid_quic_version(const char *program_name, const char *value) {
+    fprintf(stderr, "Error: invalid QUIC version: %s.\n", value);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
 static int fail_invalid_positive_size(const char *program_name, const char *option_name) {
     fprintf(stderr, "Error: %s must be a positive integer.\n", option_name);
     print_usage(stderr, program_name);
@@ -230,8 +243,92 @@ static int parse_app_protocol(const char *text, AppProtocol *protocol) {
         *protocol = APP_PROTO_TLS;
         return 0;
     }
+    if (strcmp(text, "dhcp") == 0) {
+        *protocol = APP_PROTO_DHCP;
+        return 0;
+    }
+    if (strcmp(text, "mdns") == 0) {
+        *protocol = APP_PROTO_MDNS;
+        return 0;
+    }
+    if (strcmp(text, "quic") == 0) {
+        *protocol = APP_PROTO_QUIC;
+        return 0;
+    }
 
     return 1;
+}
+
+/*
+ * DHCP message type filters accept the common lowercase names or a numeric
+ * value, mirroring how DNS type filters accept both names and numbers.
+ */
+static int parse_dhcp_type(const char *text, uint8_t *type) {
+    int numeric_type;
+
+    if (text == NULL || type == NULL) {
+        return 1;
+    }
+    if (strcmp(text, "discover") == 0) {
+        *type = 1;
+        return 0;
+    }
+    if (strcmp(text, "offer") == 0) {
+        *type = 2;
+        return 0;
+    }
+    if (strcmp(text, "request") == 0) {
+        *type = 3;
+        return 0;
+    }
+    if (strcmp(text, "decline") == 0) {
+        *type = 4;
+        return 0;
+    }
+    if (strcmp(text, "ack") == 0) {
+        *type = 5;
+        return 0;
+    }
+    if (strcmp(text, "nak") == 0) {
+        *type = 6;
+        return 0;
+    }
+    if (strcmp(text, "release") == 0) {
+        *type = 7;
+        return 0;
+    }
+    if (strcmp(text, "inform") == 0) {
+        *type = 8;
+        return 0;
+    }
+    if (parse_positive_int(text, &numeric_type) != 0 || numeric_type > 255) {
+        return 1;
+    }
+
+    *type = (uint8_t)numeric_type;
+    return 0;
+}
+
+/*
+ * QUIC versions are commonly shown in hex (e.g. 0x00000001), so accept either
+ * a decimal or 0x-prefixed hexadecimal value.
+ */
+static int parse_quic_version(const char *text, uint32_t *version) {
+    char *end = NULL;
+    unsigned long parsed;
+
+    if (text == NULL || version == NULL || text[0] == '\0') {
+        return 1;
+    }
+
+    errno = 0;
+    parsed = strtoul(text, &end, 0);
+    if (errno != 0 || end == text || *end != '\0' || parsed > UINT32_MAX) {
+        return 1;
+    }
+
+    *version = (uint32_t)parsed;
+    return 0;
 }
 
 static int parse_domain_match_mode(const char *text, DomainMatchMode *mode) {
@@ -651,6 +748,24 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             }
             config->filter_tls_alpn_enabled = true;
             i++;
+        } else if (strcmp(argv[i], "--dhcp-type") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--dhcp-type requires a value.");
+            }
+            if (parse_dhcp_type(argv[i + 1], &config->filter_dhcp_type) != 0) {
+                return fail_invalid_dhcp_type(program_name, argv[i + 1]);
+            }
+            config->filter_dhcp_type_enabled = true;
+            i++;
+        } else if (strcmp(argv[i], "--quic-version") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--quic-version requires a value.");
+            }
+            if (parse_quic_version(argv[i + 1], &config->filter_quic_version) != 0) {
+                return fail_invalid_quic_version(program_name, argv[i + 1]);
+            }
+            config->filter_quic_version_enabled = true;
+            i++;
         } else if (strcmp(argv[i], "--reassemble") == 0) {
             config->reassemble = true;
         } else if (strcmp(argv[i], "--max-flows") == 0) {
@@ -716,7 +831,8 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
         (config->filter_app_enabled || config->filter_http_host_enabled ||
          config->filter_http_method_enabled || config->filter_dns_query_enabled ||
          config->filter_dns_type_enabled || config->filter_tls_sni_enabled ||
-         config->filter_tls_alpn_enabled)) {
+         config->filter_tls_alpn_enabled || config->filter_dhcp_type_enabled ||
+         config->filter_quic_version_enabled)) {
         return fail_with_error(program_name, "app filters require --decode-app.");
     }
 

@@ -32,6 +32,8 @@ void stats_update(PacketStats *stats, const PacketInfo *info) {
         stats->udp_packets++;
     } else if (info->protocol == PROTO_ICMP) {
         stats->icmp_packets++;
+    } else if (info->protocol == PROTO_ARP) {
+        stats->arp_packets++;
     } else {
         stats->other_packets++;
     }
@@ -68,6 +70,7 @@ void stats_print(const PacketStats *stats) {
     printf("TCP: %u\n", stats->tcp_packets);
     printf("UDP: %u\n", stats->udp_packets);
     printf("ICMP: %u\n", stats->icmp_packets);
+    printf("ARP: %u\n", stats->arp_packets);
     printf("Other: %u\n", stats->other_packets);
     printf("Total bytes: %zu\n", stats->total_bytes);
     printf("Average packet size: %zu\n", average_size);

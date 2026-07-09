@@ -6,6 +6,26 @@
 #include "config.h"
 #include "stats.h"
 
+static const char *app_filter_protocol_name(AppProtocol protocol) {
+    switch (protocol) {
+    case APP_PROTO_HTTP:
+        return "http";
+    case APP_PROTO_DNS:
+        return "dns";
+    case APP_PROTO_TLS:
+        return "tls";
+    case APP_PROTO_DHCP:
+        return "dhcp";
+    case APP_PROTO_MDNS:
+        return "mdns";
+    case APP_PROTO_QUIC:
+        return "quic";
+    case APP_PROTO_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
 static int args_requested_help(int argc, char **argv) {
     int i;
 
@@ -67,9 +87,7 @@ static void print_startup_summary(const AppConfig *config) {
         printf("Payload preview: %zu bytes\n", config->payload_preview_bytes);
     }
     if (config->filter_app_enabled) {
-        printf("App filter: %s\n", config->filter_app_protocol == APP_PROTO_HTTP  ? "http"
-                                   : config->filter_app_protocol == APP_PROTO_DNS ? "dns"
-                                                                                  : "tls");
+        printf("App filter: %s\n", app_filter_protocol_name(config->filter_app_protocol));
     }
     if (config->filter_http_host_enabled) {
         printf("HTTP host filter: %s\n", config->filter_http_host);
@@ -88,6 +106,12 @@ static void print_startup_summary(const AppConfig *config) {
     }
     if (config->filter_tls_alpn_enabled) {
         printf("TLS ALPN filter: %s\n", config->filter_tls_alpn);
+    }
+    if (config->filter_dhcp_type_enabled) {
+        printf("DHCP type filter: %u\n", (unsigned int)config->filter_dhcp_type);
+    }
+    if (config->filter_quic_version_enabled) {
+        printf("QUIC version filter: 0x%08x\n", (unsigned int)config->filter_quic_version);
     }
     if (config->logging_enabled != 0) {
         printf("Log file: %s\n", config->log_path);

@@ -8,19 +8,33 @@
 #define MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES 256
 #define MINISNIFFER_APP_TEXT_LEN 256
 #define MINISNIFFER_MAX_IPV4_HEADER_BYTES 60
+#define MINISNIFFER_MAC_TEXT_LEN 18
+#define MINISNIFFER_QUIC_CID_MAX_BYTES 20
+#define MINISNIFFER_QUIC_CID_TEXT_LEN 41
 
 /*
  * Protocol describes the coarse protocol category for a packet.
  * Parsers assign this value after inspecting packet headers.
  * Filters, logs, and stats use it for consistent behavior.
+ * ARP has no transport ports; src_ip/dst_ip hold the sender/target IPv4
+ * addresses so host filters keep working without special-casing ARP.
  */
-typedef enum { PROTO_TCP, PROTO_UDP, PROTO_ICMP, PROTO_OTHER } Protocol;
+typedef enum { PROTO_TCP, PROTO_UDP, PROTO_ICMP, PROTO_ARP, PROTO_OTHER } Protocol;
 
 /*
  * AppProtocol describes decoded application-layer metadata. UNKNOWN means no
- * app decoder matched or decoding has not been requested.
+ * app decoder matched or decoding has not been requested. MDNS reuses the DNS
+ * message parser and AppInfo fields since mDNS is wire-compatible with DNS.
  */
-typedef enum { APP_PROTO_UNKNOWN = 0, APP_PROTO_HTTP, APP_PROTO_DNS, APP_PROTO_TLS } AppProtocol;
+typedef enum {
+    APP_PROTO_UNKNOWN = 0,
+    APP_PROTO_HTTP,
+    APP_PROTO_DNS,
+    APP_PROTO_TLS,
+    APP_PROTO_DHCP,
+    APP_PROTO_MDNS,
+    APP_PROTO_QUIC
+} AppProtocol;
 
 typedef enum {
     APP_DECODE_STATUS_NOT_RUN = 0,
@@ -66,6 +80,18 @@ typedef struct {
     uint16_t tls_client_version;
     char tls_sni[MINISNIFFER_APP_TEXT_LEN];
     char tls_alpn[MINISNIFFER_TLS_ALPN_LEN];
+
+    uint8_t dhcp_message_type;
+    uint32_t dhcp_transaction_id;
+    char dhcp_client_mac[MINISNIFFER_MAC_TEXT_LEN];
+    char dhcp_client_ip[MINISNIFFER_IP_TEXT_LEN];
+    char dhcp_your_ip[MINISNIFFER_IP_TEXT_LEN];
+    char dhcp_server_ip[MINISNIFFER_IP_TEXT_LEN];
+    char dhcp_requested_ip[MINISNIFFER_IP_TEXT_LEN];
+
+    uint32_t quic_version;
+    char quic_dcid[MINISNIFFER_QUIC_CID_TEXT_LEN];
+    char quic_scid[MINISNIFFER_QUIC_CID_TEXT_LEN];
 } AppInfo;
 
 /*
@@ -109,6 +135,16 @@ typedef struct {
     const uint8_t *ipv4_fragment_payload;
     unsigned char ipv4_header[MINISNIFFER_MAX_IPV4_HEADER_BYTES];
 
+    /*
+     * ARP has no transport ports or IP header. Sender/target IPv4 addresses
+     * are stored in src_ip/dst_ip above so protocol/host filters and CSV/JSON
+     * address fields work without special-casing ARP.
+     */
+    int has_arp;
+    uint16_t arp_operation;
+    char arp_sender_mac[MINISNIFFER_MAC_TEXT_LEN];
+    char arp_target_mac[MINISNIFFER_MAC_TEXT_LEN];
+
     int has_payload;
     const uint8_t *payload;
     size_t payload_capture_length;
@@ -130,6 +166,7 @@ typedef struct {
     uint32_t tcp_packets;
     uint32_t udp_packets;
     uint32_t icmp_packets;
+    uint32_t arp_packets;
     uint32_t other_packets;
 
     size_t total_bytes;

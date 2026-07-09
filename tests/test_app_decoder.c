@@ -253,6 +253,69 @@ static void test_app_decode_status_mapping(void) {
     assert(app_decode_status_from_result(result, &packet, &info) == APP_DECODE_STATUS_NO_MATCH);
 }
 
+static void test_app_decode_packet_uses_ports_for_mdns(void) {
+    PacketInfo packet =
+        make_payload_packet(PROTO_UDP, 5353, 5353, DNS_A_QUERY, sizeof(DNS_A_QUERY));
+    AppInfo info;
+
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_MDNS);
+    assert(strcmp(info.dns_query_name, "www.example.com") == 0);
+}
+
+static void test_app_decode_packet_uses_ports_for_dhcp(void) {
+    uint8_t message[240];
+    PacketInfo packet;
+    AppInfo info;
+
+    memset(message, 0, sizeof(message));
+    message[0] = 1;
+    message[1] = 1;
+    message[2] = 6;
+    message[236] = 0x63;
+    message[237] = 0x82;
+    message[238] = 0x53;
+    message[239] = 0x63;
+    packet = make_payload_packet(PROTO_UDP, 68, 67, message, sizeof(message));
+
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_DHCP);
+}
+
+static void test_app_decode_packet_uses_ports_for_quic(void) {
+    PacketInfo packet =
+        make_payload_packet(PROTO_UDP, 51000, 443, QUIC_INITIAL_V1, sizeof(QUIC_INITIAL_V1));
+    AppInfo info;
+
+    assert(app_decode_packet(&packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_QUIC);
+    assert(info.quic_version == 1);
+}
+
+static void test_app_decode_buffer_handles_new_protocol_preferences(void) {
+    uint8_t message[240];
+    AppInfo info;
+
+    assert(app_decode_buffer(APP_PROTO_MDNS, DNS_A_QUERY, sizeof(DNS_A_QUERY), &info) ==
+           APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_MDNS);
+
+    memset(message, 0, sizeof(message));
+    message[0] = 1;
+    message[1] = 1;
+    message[2] = 6;
+    message[236] = 0x63;
+    message[237] = 0x82;
+    message[238] = 0x53;
+    message[239] = 0x63;
+    assert(app_decode_buffer(APP_PROTO_DHCP, message, sizeof(message), &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_DHCP);
+
+    assert(app_decode_buffer(APP_PROTO_QUIC, QUIC_INITIAL_V1, sizeof(QUIC_INITIAL_V1), &info) ==
+           APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_QUIC);
+}
+
 static void test_app_decode_stream_uses_hints_and_fallback(void) {
     uint8_t dns_frame[sizeof(DNS_A_QUERY) + 2];
     PacketInfo packet;
@@ -308,6 +371,10 @@ int main(void) {
     test_app_decode_packet_uses_tls_ports();
     test_app_decode_packet_rejects_invalid_payload_views();
     test_app_decode_status_mapping();
+    test_app_decode_packet_uses_ports_for_mdns();
+    test_app_decode_packet_uses_ports_for_dhcp();
+    test_app_decode_packet_uses_ports_for_quic();
+    test_app_decode_buffer_handles_new_protocol_preferences();
     test_app_decode_stream_uses_hints_and_fallback();
 
     printf("All app decoder tests passed.\n");

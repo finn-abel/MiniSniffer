@@ -33,6 +33,43 @@ static void print_dns_type(uint16_t type) {
     printf("%u", (unsigned int)type);
 }
 
+/*
+ * DHCP message type names mirror the numeric values app_dhcp.c stores; kept
+ * separate here since only display code needs the text form.
+ */
+static const char *dhcp_message_type_name(uint8_t type) {
+    switch (type) {
+    case 1:
+        return "discover";
+    case 2:
+        return "offer";
+    case 3:
+        return "request";
+    case 4:
+        return "decline";
+    case 5:
+        return "ack";
+    case 6:
+        return "nak";
+    case 7:
+        return "release";
+    case 8:
+        return "inform";
+    default:
+        return NULL;
+    }
+}
+
+static void print_dhcp_message_type(uint8_t type) {
+    const char *name = dhcp_message_type_name(type);
+
+    if (name != NULL) {
+        printf("%s", name);
+        return;
+    }
+    printf("%u", (unsigned int)type);
+}
+
 static const char *app_protocol_name(AppProtocol protocol) {
     switch (protocol) {
     case APP_PROTO_HTTP:
@@ -41,6 +78,12 @@ static const char *app_protocol_name(AppProtocol protocol) {
         return "dns";
     case APP_PROTO_TLS:
         return "tls";
+    case APP_PROTO_DHCP:
+        return "dhcp";
+    case APP_PROTO_MDNS:
+        return "mdns";
+    case APP_PROTO_QUIC:
+        return "quic";
     case APP_PROTO_UNKNOWN:
     default:
         return "unknown";
@@ -55,6 +98,8 @@ static const char *protocol_json_name(Protocol protocol) {
         return "udp";
     case PROTO_ICMP:
         return "icmp";
+    case PROTO_ARP:
+        return "arp";
     case PROTO_OTHER:
     default:
         return "other";
@@ -233,6 +278,28 @@ static void print_json_app(const AppInfo *app) {
         if (app->tls_client_version != 0) {
             printf(",\"client_version\":\"0x%04x\"", (unsigned int)app->tls_client_version);
         }
+    } else if (app->protocol == APP_PROTO_MDNS) {
+        print_json_text_field("query", app->dns_query_name);
+        if (app->dns_query_type != 0) {
+            printf(",\"type\":%u", (unsigned int)app->dns_query_type);
+        }
+        if (app->dns_query_class != 0) {
+            printf(",\"class\":%u", (unsigned int)app->dns_query_class);
+        }
+        printf(",\"rcode\":%u", (unsigned int)app->dns_rcode);
+    } else if (app->protocol == APP_PROTO_DHCP) {
+        printf(",\"message_type\":");
+        print_json_string(dhcp_message_type_name(app->dhcp_message_type));
+        printf(",\"transaction_id\":\"0x%08x\"", (unsigned int)app->dhcp_transaction_id);
+        print_json_text_field("client_mac", app->dhcp_client_mac);
+        print_json_text_field("client_ip", app->dhcp_client_ip);
+        print_json_text_field("your_ip", app->dhcp_your_ip);
+        print_json_text_field("server_ip", app->dhcp_server_ip);
+        print_json_text_field("requested_ip", app->dhcp_requested_ip);
+    } else if (app->protocol == APP_PROTO_QUIC) {
+        printf(",\"version\":\"0x%08x\"", (unsigned int)app->quic_version);
+        print_json_text_field("dcid", app->quic_dcid);
+        print_json_text_field("scid", app->quic_scid);
     }
     printf("}");
 }
@@ -285,6 +352,34 @@ static void print_app_with_prefix(const AppInfo *app, const char *prefix) {
         printf("%stls", prefix);
         print_text_field("sni", app->tls_sni);
         print_text_field("alpn", app->tls_alpn);
+        printf("\n");
+        return;
+    }
+
+    if (app->protocol == APP_PROTO_MDNS) {
+        printf("%smdns", prefix);
+        print_text_field("query", app->dns_query_name);
+        if (app->dns_query_type != 0) {
+            printf(" type=");
+            print_dns_type(app->dns_query_type);
+        }
+        printf("\n");
+        return;
+    }
+
+    if (app->protocol == APP_PROTO_DHCP) {
+        printf("%sdhcp type=", prefix);
+        print_dhcp_message_type(app->dhcp_message_type);
+        print_text_field("client_mac", app->dhcp_client_mac);
+        print_text_field("requested_ip", app->dhcp_requested_ip);
+        printf("\n");
+        return;
+    }
+
+    if (app->protocol == APP_PROTO_QUIC) {
+        printf("%squic version=0x%08x", prefix, (unsigned int)app->quic_version);
+        print_text_field("dcid", app->quic_dcid);
+        print_text_field("scid", app->quic_scid);
         printf("\n");
     }
 }
@@ -351,6 +446,22 @@ void output_print_packet_app_status(AppDecodeStatus status, const AppInfo *app) 
         printf(" protocol=tls");
         print_text_field("sni", app->tls_sni);
         print_text_field("alpn", app->tls_alpn);
+    } else if (app->protocol == APP_PROTO_MDNS) {
+        printf(" protocol=mdns");
+        print_text_field("query", app->dns_query_name);
+        if (app->dns_query_type != 0) {
+            printf(" type=");
+            print_dns_type(app->dns_query_type);
+        }
+    } else if (app->protocol == APP_PROTO_DHCP) {
+        printf(" protocol=dhcp type=");
+        print_dhcp_message_type(app->dhcp_message_type);
+        print_text_field("client_mac", app->dhcp_client_mac);
+        print_text_field("requested_ip", app->dhcp_requested_ip);
+    } else if (app->protocol == APP_PROTO_QUIC) {
+        printf(" protocol=quic version=0x%08x", (unsigned int)app->quic_version);
+        print_text_field("dcid", app->quic_dcid);
+        print_text_field("scid", app->quic_scid);
     }
     printf("\n");
 }
@@ -404,6 +515,22 @@ void output_print_packet_json(const PacketInfo *packet, const AppInfo *app, cons
                (unsigned int)packet->icmp_code);
     }
     printf("},\"packet_length\":%zu", packet->size);
+
+    if (packet->has_arp != 0) {
+        printf(",\"arp\":{\"operation\":");
+        print_json_string(packet->arp_operation == 1   ? "request"
+                          : packet->arp_operation == 2 ? "reply"
+                                                        : "other");
+        printf(",\"sender_mac\":");
+        print_json_string(packet->arp_sender_mac);
+        printf(",\"sender_ip\":");
+        print_json_string(packet->src_ip);
+        printf(",\"target_mac\":");
+        print_json_string(packet->arp_target_mac);
+        printf(",\"target_ip\":");
+        print_json_string(packet->dst_ip);
+        printf("}");
+    }
 
     if (payload_enabled && packet->has_payload != 0) {
         payload_limit = packet->payload_preview_length;

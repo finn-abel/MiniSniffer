@@ -112,8 +112,13 @@ static int dns_header_is_plausible(uint16_t qdcount, uint16_t ancount, uint16_t 
  * Decode one DNS message without transport framing. The first question is the
  * only variable-length section parsed for now; answers can be added later on
  * top of the same safe name reader.
+ *
+ * mDNS (RFC 6762) is wire-compatible with DNS, so app_dns_decode_mdns_message
+ * shares this exact parser and only differs in the reported AppProtocol and
+ * summary label.
  */
-AppDecodeResult app_dns_decode_message(const uint8_t *data, size_t length, AppInfo *out) {
+static AppDecodeResult decode_dns_message_as(const uint8_t *data, size_t length, AppInfo *out,
+                                             AppProtocol protocol, const char *label) {
     ByteReader reader;
     uint16_t flags;
     uint16_t ancount;
@@ -130,7 +135,7 @@ AppDecodeResult app_dns_decode_message(const uint8_t *data, size_t length, AppIn
     }
 
     br_init(&reader, data, length);
-    out->protocol = APP_PROTO_DNS;
+    out->protocol = protocol;
     if (!br_read_u16_be(&reader, &out->dns_transaction_id) || !br_read_u16_be(&reader, &flags) ||
         !br_read_u16_be(&reader, &out->dns_question_count) || !br_read_u16_be(&reader, &ancount) ||
         !br_read_u16_be(&reader, &nscount) || !br_read_u16_be(&reader, &arcount)) {
@@ -169,15 +174,28 @@ AppDecodeResult app_dns_decode_message(const uint8_t *data, size_t length, AppIn
         }
     }
 
-    snprintf(out->summary, sizeof(out->summary), "DNS %s id=0x%04x q=%u %s",
+    snprintf(out->summary, sizeof(out->summary), "%s %s id=0x%04x q=%u %s", label,
              out->dns_is_response ? "response" : "query", (unsigned int)out->dns_transaction_id,
              (unsigned int)out->dns_question_count, out->dns_query_name);
     return APP_DECODE_OK;
 }
 
+AppDecodeResult app_dns_decode_message(const uint8_t *data, size_t length, AppInfo *out) {
+    return decode_dns_message_as(data, length, out, APP_PROTO_DNS, "DNS");
+}
+
+AppDecodeResult app_dns_decode_mdns_message(const uint8_t *data, size_t length, AppInfo *out) {
+    return decode_dns_message_as(data, length, out, APP_PROTO_MDNS, "mDNS");
+}
+
 AppDecodeResult app_dns_decode_udp(const uint8_t *data, size_t length, AppInfo *out) {
     /* UDP DNS payloads contain exactly one DNS message without a length prefix. */
     return app_dns_decode_message(data, length, out);
+}
+
+AppDecodeResult app_dns_decode_mdns_udp(const uint8_t *data, size_t length, AppInfo *out) {
+    /* mDNS over UDP also carries exactly one message without a length prefix. */
+    return app_dns_decode_mdns_message(data, length, out);
 }
 
 /*
