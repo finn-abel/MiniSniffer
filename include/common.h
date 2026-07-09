@@ -182,6 +182,19 @@ typedef struct {
     uint32_t app_decode_malformed;
     uint32_t app_decode_truncated;
     uint32_t app_decode_decoded;
+
+    uint64_t flow_count_created;
+    uint64_t flow_count_active_at_exit;
+    uint64_t flow_closed_fin;
+    uint64_t flow_closed_rst;
+    uint64_t flow_evicted_idle;
+    uint64_t flow_evicted_capacity;
+    uint64_t flow_retransmissions;
+    uint64_t flow_out_of_order_segments;
+    uint64_t flow_overlapping_segments;
+    uint64_t flow_gaps;
+    size_t flow_stream_bytes_in_use;
+    size_t flow_stream_bytes_configured_max;
 } PacketStats;
 
 /*

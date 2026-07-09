@@ -417,10 +417,55 @@ sequence over another.
 
 Flow tracking is bounded by `--max-flows`. Only TCP flows are tracked, and each
 direction's storage is allocated lazily when payload arrives. The CLI enforces
-per-setting and aggregate memory ceilings. When the table is full after idle
-eviction, MiniSniffer evicts the least recently seen flow to preserve the memory
-cap. Each direction has its own fixed stream buffer; data that cannot fit is
-dropped rather than reallocating the buffer.
+per-setting and aggregate memory ceilings. Each direction has its own fixed
+stream buffer; data that cannot fit is dropped rather than reallocating the
+buffer.
+
+### TCP Reassembly Model
+
+The reassembly model is intentionally conservative rather than a full TCP
+stack:
+
+- **Sequencing** uses serial-number arithmetic, so it stays correct across a
+  32-bit sequence-number wraparound.
+- **In-order data** is appended directly to the per-direction stream buffer.
+- **Out-of-order data** (a gap) is copied into a small bounded pending store
+  (at most 8 segments, and bounded to the same byte cap as the stream buffer
+  itself). A gap is counted every time a segment arrives ahead of the expected
+  sequence, whether or not it can be buffered.
+- **Retransmissions** (a segment that ends at or before the already-accepted
+  sequence) are counted and ignored without touching the stream.
+- **Overlaps** are trimmed with a fixed policy: keep the bytes already
+  accepted, append only the new tail of an overlapping segment. MiniSniffer
+  never rewrites bytes already placed in the stream.
+- **Memory caps**: once a segment cannot fit in the stream buffer or the
+  pending store is full (segment count or byte cap), further data for that
+  direction is dropped. The direction is marked unusable rather than growing
+  memory to make room.
+- **FIN/RST tracking**: FIN and RST flags are tracked for every TCP segment in
+  a flow, including segments with no payload (bare ACK/FIN/RST packets) and
+  segments arriving after the flow has already been classified. A flow is
+  considered closed once either direction has seen RST, or both directions
+  have seen FIN. Closed flows are proactively removed from the flow table
+  instead of waiting for the idle timeout, freeing their memory sooner.
+- **Buffer release on classification**: once a flow's application metadata has
+  been classified (from either a packet-local decode or a completed stream
+  decode), its stream and pending-segment buffers are freed immediately, since
+  nothing reads them again. FIN/RST tracking keeps working afterward with no
+  buffer allocated.
+- **Flows discovered mid-stream**: MiniSniffer never requires seeing a
+  connection's SYN. The first captured segment for a direction becomes the
+  sequencing baseline, so a flow whose earlier packets were missed (capture
+  started late, or the flow was already several packets old when first seen)
+  is still tracked and classified normally from whatever point capture began.
+- **Eviction** happens three ways: idle timeout (`--flow-timeout`), capacity
+  pressure (least-recently-seen flow evicted when `--max-flows` is reached),
+  and proactive closed-flow cleanup (FIN/RST, described above). All three are
+  counted separately in `--stats`.
+
+This is not a full TCP stack: it does not implement retransmission timers,
+congestion control, window scaling, or connection state beyond "reassembling
+enough bytes to decode application metadata, and knowing when to stop."
 
 ## CSV Logging
 
@@ -500,8 +545,16 @@ The stats summary includes:
 - IPv4 fragments malformed
 - IPv4 fragments dropped due to caps
 - App decode no_match, need_more, malformed, truncated, and decoded counters
+- Flows created
+- Flows active when capture ended
+- Flows closed via FIN and via RST
+- Flows evicted due to idle timeout and due to `--max-flows` capacity pressure
+- Flow retransmissions, out-of-order segments, overlapping segments, and gaps
+- Flow stream bytes currently in use and the configured maximum
 
-Stats count displayed packets only. Filtered-out packets are ignored.
+Stats count displayed packets only. Filtered-out packets are ignored. Flow
+counters reflect the whole `--reassemble` run and are populated once, at the
+end of capture; they are all zero when `--reassemble` is not used.
 
 ## Tests
 
@@ -707,7 +760,13 @@ Important modules:
   packet version/DCID/SCID metadata only.
 - ARP support is limited to the common Ethernet/IPv4 shape; other hardware or
   protocol address types are left as `OTHER`.
-- TCP reassembly is conservative and bounded; it is not a full TCP stack.
+- TCP reassembly is conservative and bounded; it is not a full TCP stack. See
+  [TCP Reassembly Model](#tcp-reassembly-model) for the exact sequencing,
+  gap/overlap, memory-cap, and FIN/RST-cleanup behavior.
+- Idle-timeout and closed-flow eviction are both opportunistic: they run when
+  a new packet arrives for any tracked flow (or once more at capture
+  shutdown), not on a wall-clock timer. A live capture with no further traffic
+  after a flow closes will not free that flow's slot until shutdown.
 - HTTP Host, DNS query, and TLS SNI filters default to normalized domain
   matching: ASCII case-insensitive comparison with one trailing root dot
   ignored. Exact matching is available at runtime; IDNA matching requires a

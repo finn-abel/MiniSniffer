@@ -129,6 +129,70 @@ static void test_dns_over_tcp_split_across_two_segments(void) {
     flow_table_cleanup(&table);
 }
 
+/*
+ * MiniSniffer never sees a connection's SYN when capture starts mid-stream,
+ * so a flow's very first packets never carry the SYN flag. This test
+ * documents that classification still succeeds normally once enough
+ * segments accumulate, exactly as if the flow were "discovered" only after
+ * several packets had already passed by.
+ */
+static void test_flow_classifies_correctly_when_discovered_mid_stream(void) {
+    FlowTable table;
+    PacketInfo packet = make_tcp_packet(50000, 80);
+    FlowDirection direction;
+    FlowInfo *flow = make_flow(&table, &packet, &direction);
+    const uint8_t first[] = "GET /report HTTP/1.1\r\n";
+    const uint8_t second[] = "Host: example.com\r\n";
+    const uint8_t third[] = "User-Agent: test\r\n\r\n";
+
+    /* A high, arbitrary starting sequence stands in for a connection that was
+     * already in progress before this capture began observing it. */
+    assert(!flow->app_classified);
+    assert(feed_segment(flow, direction, &packet, 900000, first, sizeof(first) - 1) ==
+           APP_DECODE_NEED_MORE);
+    assert(flow->packet_count == 0);
+    flow_update_packet(flow, &packet, 10, direction);
+    assert(!flow->app_classified);
+
+    assert(feed_segment(flow, direction, &packet, 900000 + (uint32_t)(sizeof(first) - 1), second,
+                        sizeof(second) - 1) == APP_DECODE_NEED_MORE);
+    flow_update_packet(flow, &packet, 11, direction);
+    assert(!flow->app_classified);
+
+    assert(feed_segment(flow, direction, &packet,
+                        900000 + (uint32_t)(sizeof(first) - 1) + (uint32_t)(sizeof(second) - 1),
+                        third, sizeof(third) - 1) == APP_DECODE_OK);
+    flow_update_packet(flow, &packet, 12, direction);
+    assert(flow->app_classified);
+    assert(flow->packet_count == 3);
+    assert(strcmp(flow->app.http_host, "example.com") == 0);
+    flow_table_cleanup(&table);
+}
+
+/*
+ * Once classified, buffered reassembly memory is no longer useful. This
+ * mirrors what capture.c does after a successful classification.
+ */
+static void test_flow_release_reassembly_buffers_after_classification(void) {
+    FlowTable table;
+    PacketInfo packet = make_tcp_packet(50000, 443);
+    FlowDirection direction;
+    FlowInfo *flow = make_flow(&table, &packet, &direction);
+
+    assert(feed_segment(flow, direction, &packet, 1, TLS_CLIENT_HELLO_SNI_ALPN,
+                        sizeof(TLS_CLIENT_HELLO_SNI_ALPN)) == APP_DECODE_OK);
+    assert(flow->app_classified);
+    assert(flow->directions[direction].tcp.stream.data != NULL);
+
+    flow_release_reassembly_buffers(flow);
+    assert(flow->directions[direction].tcp.stream.data == NULL);
+    /* FIN/RST tracking still works with no buffer allocated. */
+    tcp_reassembly_track_flags(&flow->directions[FLOW_DIR_A_TO_B].tcp, TCP_FLAG_FIN);
+    tcp_reassembly_track_flags(&flow->directions[FLOW_DIR_B_TO_A].tcp, TCP_FLAG_FIN);
+    assert(flow_is_closed(flow));
+    flow_table_cleanup(&table);
+}
+
 static void test_flow_timeout_eviction_cleans_reassembly_state(void) {
     FlowTable table;
     PacketInfo first = make_tcp_packet(50000, 80);
@@ -186,6 +250,8 @@ int main(void) {
     test_http_headers_split_across_multiple_packets();
     test_tls_client_hello_split_across_two_segments();
     test_dns_over_tcp_split_across_two_segments();
+    test_flow_classifies_correctly_when_discovered_mid_stream();
+    test_flow_release_reassembly_buffers_after_classification();
     test_flow_timeout_eviction_cleans_reassembly_state();
     test_max_flow_cap_evicts_oldest_flow();
     test_max_stream_buffer_cap_prevents_classification();

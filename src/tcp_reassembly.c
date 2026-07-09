@@ -167,6 +167,44 @@ void tcp_reassembly_direction_cleanup(TcpReassemblyDirection *state) {
 }
 
 /*
+ * FIN/RST are sticky facts about a direction that must remain observable even
+ * after buffered reassembly stops, so this never depends on sequence state or
+ * the stream/pending stores.
+ */
+void tcp_reassembly_track_flags(TcpReassemblyDirection *state, uint8_t flags) {
+    if (state == NULL) {
+        return;
+    }
+
+    if ((flags & TCP_FLAG_RST) != 0) {
+        state->rst_seen = true;
+    }
+    if ((flags & TCP_FLAG_FIN) != 0) {
+        state->fin_seen = true;
+    }
+}
+
+/*
+ * Reclaims memory for a direction that no longer needs buffered bytes (for
+ * example, once its flow has already been classified). Tracking fields are
+ * preserved so tcp_reassembly_track_flags keeps working afterward.
+ */
+void tcp_reassembly_direction_release_buffers(TcpReassemblyDirection *state) {
+    size_t i;
+
+    if (state == NULL) {
+        return;
+    }
+
+    for (i = 0; i < state->pending_count; i++) {
+        clear_pending_segment(&state->pending[i]);
+    }
+    state->pending_count = 0;
+    state->pending_bytes = 0;
+    stream_buffer_cleanup(&state->stream);
+}
+
+/*
  * This is intentionally a modest TCP reconstructor: accept in-order data,
  * buffer simple future data, trim overlaps, and drop anything that would exceed
  * fixed memory caps. It does not try to model every TCP edge case yet.

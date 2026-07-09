@@ -52,6 +52,32 @@ void stats_update(PacketStats *stats, const PacketInfo *info) {
 }
 
 /*
+ * Folds a point-in-time flow table snapshot into PacketStats so --stats can
+ * report flow lifecycle and reassembly memory usage alongside packet counts.
+ */
+void stats_apply_flow_table(PacketStats *stats, const FlowTable *table) {
+    FlowTableStats snapshot;
+
+    if (stats == NULL || table == NULL) {
+        return;
+    }
+
+    snapshot = flow_table_snapshot_stats(table);
+    stats->flow_count_created = snapshot.flows_created;
+    stats->flow_count_active_at_exit = snapshot.flows_active;
+    stats->flow_closed_fin = snapshot.flows_closed_fin;
+    stats->flow_closed_rst = snapshot.flows_closed_rst;
+    stats->flow_evicted_idle = snapshot.flows_evicted_idle;
+    stats->flow_evicted_capacity = snapshot.flows_evicted_capacity;
+    stats->flow_retransmissions = snapshot.retransmissions;
+    stats->flow_out_of_order_segments = snapshot.out_of_order_segments;
+    stats->flow_overlapping_segments = snapshot.overlapping_segments;
+    stats->flow_gaps = snapshot.gaps;
+    stats->flow_stream_bytes_in_use = snapshot.stream_bytes_in_use;
+    stats->flow_stream_bytes_configured_max = snapshot.stream_bytes_configured_max;
+}
+
+/*
  * Prints a compact summary after capture.
  * Average size uses integer division because sizes are displayed as bytes.
  */
@@ -84,4 +110,18 @@ void stats_print(const PacketStats *stats) {
     printf("App decode malformed: %u\n", stats->app_decode_malformed);
     printf("App decode truncated: %u\n", stats->app_decode_truncated);
     printf("App decode decoded: %u\n", stats->app_decode_decoded);
+    printf("Flows created: %llu\n", (unsigned long long)stats->flow_count_created);
+    printf("Flows active at exit: %llu\n", (unsigned long long)stats->flow_count_active_at_exit);
+    printf("Flows closed (FIN): %llu\n", (unsigned long long)stats->flow_closed_fin);
+    printf("Flows closed (RST): %llu\n", (unsigned long long)stats->flow_closed_rst);
+    printf("Flows evicted (idle): %llu\n", (unsigned long long)stats->flow_evicted_idle);
+    printf("Flows evicted (capacity): %llu\n", (unsigned long long)stats->flow_evicted_capacity);
+    printf("Flow retransmissions: %llu\n", (unsigned long long)stats->flow_retransmissions);
+    printf("Flow out-of-order segments: %llu\n",
+           (unsigned long long)stats->flow_out_of_order_segments);
+    printf("Flow overlapping segments: %llu\n",
+           (unsigned long long)stats->flow_overlapping_segments);
+    printf("Flow gaps: %llu\n", (unsigned long long)stats->flow_gaps);
+    printf("Flow stream bytes in use: %zu\n", stats->flow_stream_bytes_in_use);
+    printf("Flow stream bytes configured max: %zu\n", stats->flow_stream_bytes_configured_max);
 }

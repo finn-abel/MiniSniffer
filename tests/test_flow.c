@@ -288,6 +288,181 @@ static void test_flow_table_can_select_nonzero_oldest_index(void) {
     flow_table_cleanup(&table);
 }
 
+static void test_flow_is_closed_detects_rst_and_bidirectional_fin(void) {
+    FlowInfo flow;
+
+    assert(!flow_is_closed(NULL));
+
+    memset(&flow, 0, sizeof(flow));
+    assert(!flow_is_closed(&flow));
+
+    flow.directions[FLOW_DIR_A_TO_B].tcp.fin_seen = true;
+    assert(!flow_is_closed(&flow));
+
+    flow.directions[FLOW_DIR_B_TO_A].tcp.fin_seen = true;
+    assert(flow_is_closed(&flow));
+
+    memset(&flow, 0, sizeof(flow));
+    flow.directions[FLOW_DIR_A_TO_B].tcp.rst_seen = true;
+    assert(flow_is_closed(&flow));
+
+    memset(&flow, 0, sizeof(flow));
+    flow.directions[FLOW_DIR_B_TO_A].tcp.rst_seen = true;
+    assert(flow_is_closed(&flow));
+}
+
+static void test_flow_release_reassembly_buffers_frees_allocated_directions(void) {
+    FlowTable table;
+    PacketInfo packet = make_tcp_packet("10.0.0.1", 50000, "10.0.0.2", 80, 10);
+    FlowDirection direction;
+    FlowInfo *flow;
+
+    assert(flow_table_init(&table, 2, 64, 60));
+    flow = flow_table_get_or_create(&table, &packet, 1, &direction);
+    assert(flow != NULL);
+    assert(flow_prepare_reassembly_direction(flow, FLOW_DIR_A_TO_B));
+    assert(flow_prepare_reassembly_direction(flow, FLOW_DIR_B_TO_A));
+    assert(flow->directions[FLOW_DIR_A_TO_B].tcp.stream.data != NULL);
+    assert(flow->directions[FLOW_DIR_B_TO_A].tcp.stream.data != NULL);
+
+    flow_release_reassembly_buffers(flow);
+    assert(flow->directions[FLOW_DIR_A_TO_B].tcp.stream.data == NULL);
+    assert(flow->directions[FLOW_DIR_B_TO_A].tcp.stream.data == NULL);
+    flow_release_reassembly_buffers(NULL);
+
+    flow_table_cleanup(&table);
+}
+
+static void test_flow_table_evict_closed_removes_only_closed_flows(void) {
+    FlowTable table;
+    PacketInfo open_packet = make_tcp_packet("10.0.0.1", 50000, "10.0.0.9", 80, 10);
+    PacketInfo fin_packet = make_tcp_packet("10.0.0.2", 50001, "10.0.0.9", 80, 10);
+    PacketInfo rst_packet = make_tcp_packet("10.0.0.3", 50002, "10.0.0.9", 80, 10);
+    FlowDirection direction;
+    FlowInfo *open_flow;
+    FlowInfo *fin_flow;
+    FlowInfo *rst_flow;
+
+    assert(flow_table_init(&table, 8, 64, 60));
+    open_flow = flow_table_get_or_create(&table, &open_packet, 1, &direction);
+    fin_flow = flow_table_get_or_create(&table, &fin_packet, 1, &direction);
+    rst_flow = flow_table_get_or_create(&table, &rst_packet, 1, &direction);
+    assert(open_flow != NULL && fin_flow != NULL && rst_flow != NULL);
+    assert(table.count == 3);
+
+    fin_flow->directions[FLOW_DIR_A_TO_B].tcp.fin_seen = true;
+    fin_flow->directions[FLOW_DIR_B_TO_A].tcp.fin_seen = true;
+    rst_flow->directions[FLOW_DIR_B_TO_A].tcp.rst_seen = true;
+
+    flow_table_evict_closed(&table);
+    assert(table.count == 1);
+    assert(flow_matches_packet(&table.flows[0], &open_packet));
+    assert(table.flows_closed_fin == 1);
+    assert(table.flows_closed_rst == 1);
+
+    flow_table_evict_closed(NULL);
+    flow_table_cleanup(&table);
+}
+
+static void test_flow_table_get_or_create_reclaims_closed_flow_slot(void) {
+    FlowTable table;
+    PacketInfo packet = make_tcp_packet("10.0.0.1", 50000, "10.0.0.2", 80, 10);
+    FlowDirection direction;
+    FlowInfo *flow;
+
+    assert(flow_table_init(&table, 1, 64, 600));
+    flow = flow_table_get_or_create(&table, &packet, 1, &direction);
+    assert(flow != NULL);
+    flow->directions[FLOW_DIR_A_TO_B].tcp.rst_seen = true;
+
+    /* A brand-new packet for the same slot finds the closed flow reclaimed. */
+    flow = flow_table_get_or_create(&table, &packet, 2, &direction);
+    assert(flow != NULL);
+    assert(flow->packet_count == 0);
+    assert(table.flows_closed_rst == 1);
+    assert(table.flows_created == 2);
+
+    flow_table_cleanup(&table);
+}
+
+static void test_flow_table_snapshot_stats_combines_active_and_evicted_totals(void) {
+    FlowTable table;
+    PacketInfo evicted_packet = make_tcp_packet("10.0.0.1", 50000, "10.0.0.9", 80, 10);
+    PacketInfo active_packet = make_tcp_packet("10.0.0.2", 50001, "10.0.0.9", 80, 10);
+    FlowDirection direction;
+    FlowInfo *evicted_flow;
+    FlowInfo *active_flow;
+    FlowTableStats snapshot;
+
+    assert(flow_table_init(&table, 8, 64, 60));
+
+    evicted_flow = flow_table_get_or_create(&table, &evicted_packet, 1, &direction);
+    assert(evicted_flow != NULL);
+    assert(flow_prepare_reassembly_direction(evicted_flow, FLOW_DIR_A_TO_B));
+    evicted_flow->directions[FLOW_DIR_A_TO_B].tcp.retransmissions = 3;
+    evicted_flow->directions[FLOW_DIR_A_TO_B].tcp.gaps = 2;
+    evicted_flow->directions[FLOW_DIR_A_TO_B].tcp.rst_seen = true;
+
+    active_flow = flow_table_get_or_create(&table, &active_packet, 1, &direction);
+    assert(active_flow != NULL);
+    assert(flow_prepare_reassembly_direction(active_flow, FLOW_DIR_A_TO_B));
+    active_flow->directions[FLOW_DIR_A_TO_B].tcp.retransmissions = 5;
+    active_flow->directions[FLOW_DIR_A_TO_B].tcp.overlapping_segments = 1;
+
+    /* Evicting the closed flow folds its counters into the table's totals. */
+    flow_table_evict_closed(&table);
+    assert(table.count == 1);
+
+    snapshot = flow_table_snapshot_stats(&table);
+    assert(snapshot.flows_created == 2);
+    assert(snapshot.flows_active == 1);
+    assert(snapshot.flows_closed_rst == 1);
+    assert(snapshot.retransmissions == 8);
+    assert(snapshot.gaps == 2);
+    assert(snapshot.overlapping_segments == 1);
+    assert(snapshot.stream_bytes_in_use == table.stream_buffer_bytes);
+    assert(snapshot.stream_bytes_configured_max == table.max_flows * table.stream_buffer_bytes * 2);
+
+    {
+        FlowTableStats empty = flow_table_snapshot_stats(NULL);
+        assert(empty.flows_created == 0);
+    }
+
+    flow_table_cleanup(&table);
+}
+
+static void test_flow_table_stress_many_flows_exceed_capacity(void) {
+    FlowTable table;
+    FlowDirection direction;
+    size_t max_flows = 3;
+    size_t total_flows = 50;
+    size_t i;
+
+    assert(flow_table_init(&table, max_flows, 64, 600));
+
+    for (i = 0; i < total_flows; i++) {
+        PacketInfo packet =
+            make_tcp_packet("10.0.0.1", (uint16_t)(50000 + i), "10.0.0.9", 80, 10);
+
+        assert(flow_table_get_or_create(&table, &packet, (uint64_t)(i + 1), &direction) != NULL);
+        assert(table.count <= max_flows);
+    }
+
+    assert(table.count == max_flows);
+    assert(table.flows_created == total_flows);
+    assert(table.flows_evicted_capacity == total_flows - max_flows);
+
+    {
+        FlowTableStats snapshot = flow_table_snapshot_stats(&table);
+
+        assert(snapshot.flows_created == total_flows);
+        assert(snapshot.flows_active == max_flows);
+        assert(snapshot.flows_evicted_capacity == total_flows - max_flows);
+    }
+
+    flow_table_cleanup(&table);
+}
+
 static void test_flow_table_rejects_manually_exhausted_table(void) {
     FlowInfo storage;
     FlowTable table;
@@ -313,6 +488,12 @@ int main(void) {
     test_flow_functions_reject_invalid_inputs();
     test_flow_table_handles_zero_timeout_and_clock_rollback();
     test_flow_table_can_select_nonzero_oldest_index();
+    test_flow_is_closed_detects_rst_and_bidirectional_fin();
+    test_flow_release_reassembly_buffers_frees_allocated_directions();
+    test_flow_table_evict_closed_removes_only_closed_flows();
+    test_flow_table_get_or_create_reclaims_closed_flow_slot();
+    test_flow_table_snapshot_stats_combines_active_and_evicted_totals();
+    test_flow_table_stress_many_flows_exceed_capacity();
     test_flow_table_rejects_manually_exhausted_table();
 
     printf("All flow tests passed.\n");

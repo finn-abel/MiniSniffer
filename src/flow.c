@@ -93,6 +93,18 @@ static bool flow_key_equals(const FlowKey *left, const FlowKey *right) {
 }
 
 /*
+ * Folds one direction's lifetime counters into the table before its state is
+ * freed, so retransmission/gap/overlap totals survive flow eviction instead
+ * of being lost when the FlowInfo slot is reused.
+ */
+static void accumulate_direction_totals(FlowTable *table, const TcpReassemblyDirection *tcp) {
+    table->retransmissions_total += tcp->retransmissions;
+    table->out_of_order_segments_total += tcp->out_of_order_segments;
+    table->overlapping_segments_total += tcp->overlapping_segments;
+    table->gaps_total += tcp->gaps;
+}
+
+/*
  * The array remains compact after eviction. This keeps iteration simple and
  * avoids leaving tombstones that would complicate max-flow accounting.
  */
@@ -101,6 +113,8 @@ static void remove_flow_at(FlowTable *table, size_t index) {
         return;
     }
 
+    accumulate_direction_totals(table, &table->flows[index].directions[FLOW_DIR_A_TO_B].tcp);
+    accumulate_direction_totals(table, &table->flows[index].directions[FLOW_DIR_B_TO_A].tcp);
     tcp_reassembly_direction_cleanup(&table->flows[index].directions[FLOW_DIR_A_TO_B].tcp);
     tcp_reassembly_direction_cleanup(&table->flows[index].directions[FLOW_DIR_B_TO_A].tcp);
 
@@ -219,11 +233,120 @@ void flow_table_evict_idle(FlowTable *table, uint64_t now_seconds) {
                                     : 0;
 
         if (idle_seconds >= table->timeout_seconds) {
+            table->flows_evicted_idle++;
             remove_flow_at(table, i);
         } else {
             i++;
         }
     }
+}
+
+/*
+ * A flow is closed when either direction has seen RST, or both directions
+ * have seen FIN. This depends only on the sticky flags tracked by
+ * tcp_reassembly_track_flags/tcp_reassembly_process_segment, so it stays
+ * correct even after a flow's reassembly buffers have been released.
+ */
+bool flow_is_closed(const FlowInfo *flow) {
+    const TcpReassemblyDirection *a_to_b;
+    const TcpReassemblyDirection *b_to_a;
+
+    if (flow == NULL) {
+        return false;
+    }
+
+    a_to_b = &flow->directions[FLOW_DIR_A_TO_B].tcp;
+    b_to_a = &flow->directions[FLOW_DIR_B_TO_A].tcp;
+    if (a_to_b->rst_seen || b_to_a->rst_seen) {
+        return true;
+    }
+
+    return a_to_b->fin_seen && b_to_a->fin_seen;
+}
+
+void flow_release_reassembly_buffers(FlowInfo *flow) {
+    if (flow == NULL) {
+        return;
+    }
+
+    tcp_reassembly_direction_release_buffers(&flow->directions[FLOW_DIR_A_TO_B].tcp);
+    tcp_reassembly_direction_release_buffers(&flow->directions[FLOW_DIR_B_TO_A].tcp);
+}
+
+/*
+ * Proactively reclaims flows whose TCP state is fully closed instead of
+ * waiting for the idle timeout. Safe to call every time a new packet arrives;
+ * closed flows are typically rare relative to total flow count.
+ */
+void flow_table_evict_closed(FlowTable *table) {
+    size_t i = 0;
+
+    if (table == NULL || table->flows == NULL) {
+        return;
+    }
+
+    while (i < table->count) {
+        if (flow_is_closed(&table->flows[i])) {
+            bool rst = table->flows[i].directions[FLOW_DIR_A_TO_B].tcp.rst_seen ||
+                      table->flows[i].directions[FLOW_DIR_B_TO_A].tcp.rst_seen;
+
+            if (rst) {
+                table->flows_closed_rst++;
+            } else {
+                table->flows_closed_fin++;
+            }
+            remove_flow_at(table, i);
+        } else {
+            i++;
+        }
+    }
+}
+
+/*
+ * Combines already-evicted lifetime totals with the live counters of flows
+ * still active in the table. Read-only: never mutates the table.
+ */
+FlowTableStats flow_table_snapshot_stats(const FlowTable *table) {
+    FlowTableStats snapshot;
+    size_t i;
+    size_t active_directions = 0;
+
+    memset(&snapshot, 0, sizeof(snapshot));
+    if (table == NULL) {
+        return snapshot;
+    }
+
+    snapshot.flows_created = table->flows_created;
+    snapshot.flows_active = table->count;
+    snapshot.flows_closed_fin = table->flows_closed_fin;
+    snapshot.flows_closed_rst = table->flows_closed_rst;
+    snapshot.flows_evicted_idle = table->flows_evicted_idle;
+    snapshot.flows_evicted_capacity = table->flows_evicted_capacity;
+    snapshot.retransmissions = table->retransmissions_total;
+    snapshot.out_of_order_segments = table->out_of_order_segments_total;
+    snapshot.overlapping_segments = table->overlapping_segments_total;
+    snapshot.gaps = table->gaps_total;
+
+    for (i = 0; i < table->count; i++) {
+        const TcpReassemblyDirection *a_to_b = &table->flows[i].directions[FLOW_DIR_A_TO_B].tcp;
+        const TcpReassemblyDirection *b_to_a = &table->flows[i].directions[FLOW_DIR_B_TO_A].tcp;
+
+        snapshot.retransmissions += a_to_b->retransmissions + b_to_a->retransmissions;
+        snapshot.out_of_order_segments +=
+            a_to_b->out_of_order_segments + b_to_a->out_of_order_segments;
+        snapshot.overlapping_segments += a_to_b->overlapping_segments + b_to_a->overlapping_segments;
+        snapshot.gaps += a_to_b->gaps + b_to_a->gaps;
+        if (a_to_b->stream.data != NULL) {
+            active_directions++;
+        }
+        if (b_to_a->stream.data != NULL) {
+            active_directions++;
+        }
+    }
+
+    snapshot.stream_bytes_in_use = active_directions * table->stream_buffer_bytes;
+    snapshot.stream_bytes_configured_max = table->max_flows * table->stream_buffer_bytes * 2;
+    return snapshot;
 }
 
 /*
@@ -244,6 +367,7 @@ static void evict_oldest_flow(FlowTable *table) {
         }
     }
 
+    table->flows_evicted_capacity++;
     remove_flow_at(table, oldest_index);
 }
 
@@ -264,6 +388,7 @@ FlowInfo *flow_table_get_or_create(FlowTable *table, const PacketInfo *packet, u
     }
 
     flow_table_evict_idle(table, now_seconds);
+    flow_table_evict_closed(table);
 
     for (i = 0; i < table->count; i++) {
         if (flow_key_equals(&table->flows[i].key, &key)) {
@@ -290,6 +415,7 @@ FlowInfo *flow_table_get_or_create(FlowTable *table, const PacketInfo *packet, u
     /* Make unclassified flow state explicit for filters and output. */
     flow->app.protocol = APP_PROTO_UNKNOWN;
     table->count++;
+    table->flows_created++;
 
     if (direction != NULL) {
         *direction = packet_direction;

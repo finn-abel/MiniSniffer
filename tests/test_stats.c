@@ -34,6 +34,18 @@ static void test_stats_init_clears_counters(void) {
     stats.app_decode_malformed = 99;
     stats.app_decode_truncated = 99;
     stats.app_decode_decoded = 99;
+    stats.flow_count_created = 99;
+    stats.flow_count_active_at_exit = 99;
+    stats.flow_closed_fin = 99;
+    stats.flow_closed_rst = 99;
+    stats.flow_evicted_idle = 99;
+    stats.flow_evicted_capacity = 99;
+    stats.flow_retransmissions = 99;
+    stats.flow_out_of_order_segments = 99;
+    stats.flow_overlapping_segments = 99;
+    stats.flow_gaps = 99;
+    stats.flow_stream_bytes_in_use = 99;
+    stats.flow_stream_bytes_configured_max = 99;
 
     stats_init(&stats);
 
@@ -54,6 +66,18 @@ static void test_stats_init_clears_counters(void) {
     assert(stats.app_decode_malformed == 0);
     assert(stats.app_decode_truncated == 0);
     assert(stats.app_decode_decoded == 0);
+    assert(stats.flow_count_created == 0);
+    assert(stats.flow_count_active_at_exit == 0);
+    assert(stats.flow_closed_fin == 0);
+    assert(stats.flow_closed_rst == 0);
+    assert(stats.flow_evicted_idle == 0);
+    assert(stats.flow_evicted_capacity == 0);
+    assert(stats.flow_retransmissions == 0);
+    assert(stats.flow_out_of_order_segments == 0);
+    assert(stats.flow_overlapping_segments == 0);
+    assert(stats.flow_gaps == 0);
+    assert(stats.flow_stream_bytes_in_use == 0);
+    assert(stats.flow_stream_bytes_configured_max == 0);
 }
 
 static void test_stats_update_tracks_protocol_counts_and_bytes(void) {
@@ -88,6 +112,41 @@ static void test_stats_update_tracks_protocol_counts_and_bytes(void) {
     assert(stats.app_decode_truncated == 1);
 }
 
+static PacketInfo make_tcp_flow_packet(const char *src_ip, uint16_t src_port, const char *dst_ip,
+                                       uint16_t dst_port) {
+    PacketInfo packet;
+
+    memset(&packet, 0, sizeof(packet));
+    snprintf(packet.src_ip, sizeof(packet.src_ip), "%s", src_ip);
+    snprintf(packet.dst_ip, sizeof(packet.dst_ip), "%s", dst_ip);
+    packet.src_port = src_port;
+    packet.dst_port = dst_port;
+    packet.has_ports = 1;
+    packet.protocol = PROTO_TCP;
+    return packet;
+}
+
+static void test_stats_apply_flow_table_copies_snapshot(void) {
+    FlowTable table;
+    PacketStats stats;
+    PacketInfo packet = make_tcp_flow_packet("10.0.0.1", 50000, "10.0.0.2", 80);
+    FlowDirection direction;
+
+    assert(flow_table_init(&table, 4, 128, 60));
+    assert(flow_table_get_or_create(&table, &packet, 1, &direction) != NULL);
+
+    stats_init(&stats);
+    stats_apply_flow_table(&stats, &table);
+    assert(stats.flow_count_created == 1);
+    assert(stats.flow_count_active_at_exit == 1);
+
+    stats_apply_flow_table(NULL, &table);
+    stats_apply_flow_table(&stats, NULL);
+    assert(stats.flow_count_created == 1);
+
+    flow_table_cleanup(&table);
+}
+
 static void test_stats_functions_accept_null_inputs(void) {
     PacketStats stats;
     PacketInfo packet = make_packet(PROTO_TCP, 100);
@@ -115,6 +174,7 @@ static void test_stats_print_handles_empty_and_populated_stats(void) {
 int main(void) {
     test_stats_init_clears_counters();
     test_stats_update_tracks_protocol_counts_and_bytes();
+    test_stats_apply_flow_table_copies_snapshot();
     test_stats_functions_accept_null_inputs();
     test_stats_print_handles_empty_and_populated_stats();
 

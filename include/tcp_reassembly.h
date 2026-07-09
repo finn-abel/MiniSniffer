@@ -68,4 +68,26 @@ TcpReassemblyResult tcp_reassembly_process_segment(TcpReassemblyDirection *state
                                                    uint8_t flags, const uint8_t *payload,
                                                    size_t payload_length);
 
+/*
+ * Updates only the sticky FIN/RST flags for a direction. Unlike
+ * tcp_reassembly_process_segment, this never touches sequence state, the
+ * stream buffer, or the pending store, so it is safe to call for zero-payload
+ * segments and for directions whose buffers have already been released by
+ * tcp_reassembly_direction_release_buffers. Callers use this to keep
+ * observing connection teardown on flows that no longer need buffered
+ * reassembly (for example, after application metadata has already been
+ * classified).
+ */
+void tcp_reassembly_track_flags(TcpReassemblyDirection *state, uint8_t flags);
+
+/*
+ * Frees the stream buffer and any pending out-of-order segments while
+ * preserving next_sequence, initial_sequence_known, fin_seen, rst_seen,
+ * unusable, and the four lifetime counters. Used once buffered bytes are no
+ * longer needed (for example, right after successful app classification) to
+ * reclaim memory while FIN/RST tracking continues via
+ * tcp_reassembly_track_flags.
+ */
+void tcp_reassembly_direction_release_buffers(TcpReassemblyDirection *state);
+
 #endif

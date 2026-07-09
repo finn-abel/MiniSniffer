@@ -8,10 +8,14 @@
 #define tcp_reassembly_direction_cleanup tcp_reassembly_direction_cleanup_white_box
 #define tcp_reassembly_direction_init tcp_reassembly_direction_init_white_box
 #define tcp_reassembly_process_segment tcp_reassembly_process_segment_white_box
+#define tcp_reassembly_track_flags tcp_reassembly_track_flags_white_box
+#define tcp_reassembly_direction_release_buffers tcp_reassembly_direction_release_buffers_white_box
 #include "../src/tcp_reassembly.c"
 #undef tcp_reassembly_direction_cleanup
 #undef tcp_reassembly_direction_init
 #undef tcp_reassembly_process_segment
+#undef tcp_reassembly_track_flags
+#undef tcp_reassembly_direction_release_buffers
 
 static void test_tcp_reassembly_accepts_in_order_data(void) {
     TcpReassemblyDirection state;
@@ -274,6 +278,155 @@ static void test_tcp_reassembly_handles_syn_fin_and_pending_limit(void) {
     tcp_reassembly_direction_cleanup(&state);
 }
 
+static void test_tcp_reassembly_track_flags_updates_only_sticky_state(void) {
+    TcpReassemblyDirection state;
+
+    memset(&state, 0, sizeof(state));
+    tcp_reassembly_track_flags(NULL, TCP_FLAG_RST);
+    tcp_reassembly_track_flags(&state, 0);
+    assert(!state.fin_seen);
+    assert(!state.rst_seen);
+
+    tcp_reassembly_track_flags(&state, TCP_FLAG_FIN);
+    assert(state.fin_seen);
+    assert(!state.rst_seen);
+    assert(!state.initial_sequence_known);
+    assert(state.next_sequence == 0);
+    assert(state.stream.data == NULL);
+
+    tcp_reassembly_track_flags(&state, TCP_FLAG_RST);
+    assert(state.rst_seen);
+}
+
+static void test_tcp_reassembly_release_buffers_frees_memory_and_preserves_tracking(void) {
+    TcpReassemblyDirection state;
+
+    assert(tcp_reassembly_direction_init(&state, 64));
+    assert(tcp_reassembly_process_segment(&state, 100, 0, (const uint8_t *)"ABC", 3) ==
+           TCP_REASSEMBLY_ACCEPTED);
+    assert(tcp_reassembly_process_segment(&state, 108, 0, (const uint8_t *)"XYZ", 3) ==
+           TCP_REASSEMBLY_BUFFERED);
+    assert(state.stream.data != NULL);
+    assert(state.pending_count == 1);
+
+    tcp_reassembly_direction_release_buffers(&state);
+    assert(state.stream.data == NULL);
+    assert(state.pending_count == 0);
+    assert(state.pending_bytes == 0);
+    /* Sequence/gap/retransmission bookkeeping survives the release. */
+    assert(state.initial_sequence_known);
+    assert(state.next_sequence == 103);
+    assert(state.gaps == 1);
+
+    /* FIN/RST tracking keeps working with no buffer allocated. */
+    tcp_reassembly_track_flags(&state, TCP_FLAG_FIN);
+    assert(state.fin_seen);
+    tcp_reassembly_direction_release_buffers(NULL);
+    tcp_reassembly_direction_cleanup(&state);
+}
+
+static void test_tcp_reassembly_handles_wraparound_with_gap_and_overlap(void) {
+    TcpReassemblyDirection state;
+
+    assert(tcp_reassembly_direction_init(&state, 64));
+    /* This segment ends exactly at the sequence-space wraparound boundary. */
+    assert(tcp_reassembly_process_segment(&state, UINT32_MAX - 1, 0, (const uint8_t *)"AB", 2) ==
+           TCP_REASSEMBLY_ACCEPTED);
+    assert(state.next_sequence == 0);
+
+    /* A gap entirely on the post-wraparound side is still recognized as future. */
+    assert(tcp_reassembly_process_segment(&state, 4, 0, (const uint8_t *)"GH", 2) ==
+           TCP_REASSEMBLY_BUFFERED);
+    assert(state.gaps == 1);
+    assert(state.out_of_order_segments == 1);
+
+    /*
+     * Filling the gap with a segment that also overlaps the pending one
+     * proves overlap trimming still works once sequence math has wrapped.
+     */
+    assert(tcp_reassembly_process_segment(&state, 0, 0, (const uint8_t *)"CDEFG", 5) ==
+           TCP_REASSEMBLY_ACCEPTED);
+    assert(state.overlapping_segments == 1);
+    assert(state.next_sequence == 6);
+    assert(stream_buffer_length(&state.stream) == 8);
+    assert(memcmp(stream_buffer_data(&state.stream), "ABCDEFGH", 8) == 0);
+    tcp_reassembly_direction_cleanup(&state);
+}
+
+static void test_tcp_reassembly_stress_many_gaps_exhausts_pending_slots(void) {
+    TcpReassemblyDirection state;
+    size_t i;
+
+    assert(tcp_reassembly_direction_init(&state, 4096));
+    assert(tcp_reassembly_process_segment(&state, 0, 0, (const uint8_t *)"A", 1) ==
+           TCP_REASSEMBLY_ACCEPTED);
+
+    /* Each gapped segment lands at a distinct, never-filled offset. */
+    for (i = 0; i < TCP_REASSEMBLY_MAX_PENDING_SEGMENTS; i++) {
+        uint32_t sequence = (uint32_t)(100 + i * 10);
+
+        assert(tcp_reassembly_process_segment(&state, sequence, 0, (const uint8_t *)"B", 1) ==
+               TCP_REASSEMBLY_BUFFERED);
+    }
+    assert(state.pending_count == TCP_REASSEMBLY_MAX_PENDING_SEGMENTS);
+    assert(state.gaps == TCP_REASSEMBLY_MAX_PENDING_SEGMENTS);
+
+    /* The pending slot table is now full; further gaps are dropped, not buffered. */
+    assert(tcp_reassembly_process_segment(&state, 900, 0, (const uint8_t *)"C", 1) ==
+           TCP_REASSEMBLY_DROPPED);
+    assert(state.gaps == TCP_REASSEMBLY_MAX_PENDING_SEGMENTS + 1);
+    assert(state.pending_count == TCP_REASSEMBLY_MAX_PENDING_SEGMENTS);
+    tcp_reassembly_direction_cleanup(&state);
+}
+
+static void test_tcp_reassembly_stress_pending_byte_cap_exhaustion(void) {
+    TcpReassemblyDirection state;
+    uint8_t chunk[16];
+
+    memset(chunk, 'Z', sizeof(chunk));
+    /* A small cap means only a couple of gapped chunks can be held at once. */
+    assert(tcp_reassembly_direction_init(&state, 32));
+    assert(tcp_reassembly_process_segment(&state, 0, 0, (const uint8_t *)"A", 1) ==
+           TCP_REASSEMBLY_ACCEPTED);
+    assert(tcp_reassembly_process_segment(&state, 100, 0, chunk, sizeof(chunk)) ==
+           TCP_REASSEMBLY_BUFFERED);
+    assert(tcp_reassembly_process_segment(&state, 200, 0, chunk, sizeof(chunk)) ==
+           TCP_REASSEMBLY_BUFFERED);
+    assert(state.pending_bytes == sizeof(chunk) * 2);
+    /* A third chunk would exceed the byte cap even though slots remain. */
+    assert(tcp_reassembly_process_segment(&state, 300, 0, chunk, sizeof(chunk)) ==
+           TCP_REASSEMBLY_DROPPED);
+    assert(state.pending_count == 2);
+    assert(state.gaps == 3);
+    tcp_reassembly_direction_cleanup(&state);
+}
+
+static void test_tcp_reassembly_stress_long_stream_many_in_order_segments(void) {
+    TcpReassemblyDirection state;
+    unsigned char expected[1000];
+    size_t i;
+
+    for (i = 0; i < sizeof(expected); i++) {
+        expected[i] = (unsigned char)('A' + (i % 26));
+    }
+
+    assert(tcp_reassembly_direction_init(&state, sizeof(expected)));
+    for (i = 0; i < sizeof(expected) / 10; i++) {
+        uint32_t sequence = (uint32_t)(1 + i * 10);
+
+        assert(tcp_reassembly_process_segment(&state, sequence, 0, expected + i * 10, 10) ==
+               TCP_REASSEMBLY_ACCEPTED);
+        assert(!state.unusable);
+    }
+
+    assert(state.next_sequence == 1 + sizeof(expected));
+    assert(stream_buffer_length(&state.stream) == sizeof(expected));
+    assert(memcmp(stream_buffer_data(&state.stream), expected, sizeof(expected)) == 0);
+    assert(state.retransmissions == 0);
+    assert(state.gaps == 0);
+    tcp_reassembly_direction_cleanup(&state);
+}
+
 static void test_tcp_reassembly_rejects_null_and_huge_payloads(void) {
     TcpReassemblyDirection state;
     uint8_t value = 1;
@@ -297,6 +450,12 @@ int main(void) {
     test_tcp_reassembly_tracks_fin_and_rst();
     test_tcp_reassembly_drops_when_memory_cap_is_exceeded();
     test_tcp_reassembly_handles_sequence_wraparound();
+    test_tcp_reassembly_track_flags_updates_only_sticky_state();
+    test_tcp_reassembly_release_buffers_frees_memory_and_preserves_tracking();
+    test_tcp_reassembly_handles_wraparound_with_gap_and_overlap();
+    test_tcp_reassembly_stress_many_gaps_exhausts_pending_slots();
+    test_tcp_reassembly_stress_pending_byte_cap_exhaustion();
+    test_tcp_reassembly_stress_long_stream_many_in_order_segments();
     test_reassembled_http_feeds_existing_decoder();
     test_tcp_reassembly_rejects_invalid_inputs();
     test_tcp_reassembly_pending_removal_compacts_entries();

@@ -223,8 +223,9 @@ static void capture_interface_list_output(char *buffer, size_t buffer_size) {
     fclose(capture);
 }
 
-static size_t build_tcp_packet(unsigned char *packet, size_t packet_capacity, uint32_t sequence,
-                               const uint8_t *payload, size_t payload_length) {
+static size_t build_tcp_packet_with_flags(unsigned char *packet, size_t packet_capacity,
+                                          uint32_t sequence, uint8_t tcp_flags,
+                                          const uint8_t *payload, size_t payload_length) {
     const size_t ethernet_length = 14;
     const size_t ipv4_length = 20;
     const size_t tcp_length = 20;
@@ -257,12 +258,18 @@ static size_t build_tcp_packet(unsigned char *packet, size_t packet_capacity, ui
     packet[tcp + 6] = (uint8_t)(sequence >> 8);
     packet[tcp + 7] = (uint8_t)sequence;
     packet[tcp + 12] = 0x50;
-    packet[tcp + 13] = 0x18;
+    packet[tcp + 13] = tcp_flags;
 
     if (payload_length != 0) {
         memcpy(packet + ethernet_length + ipv4_length + tcp_length, payload, payload_length);
     }
     return packet_length;
+}
+
+static size_t build_tcp_packet(unsigned char *packet, size_t packet_capacity, uint32_t sequence,
+                               const uint8_t *payload, size_t payload_length) {
+    return build_tcp_packet_with_flags(packet, packet_capacity, sequence, 0x18, payload,
+                                       payload_length);
 }
 
 static size_t build_ipv4_fragment_packet(unsigned char *packet, size_t packet_capacity,
@@ -761,6 +768,110 @@ static void test_capture_reassembles_ipv4_fragments_for_app_decode(void) {
     assert(stats.ipv4_fragments_dropped == 0);
 }
 
+static void test_flow_decode_stream_app_tracks_fin_rst_and_releases_buffers(void) {
+    static const uint8_t http_request[] = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
+    FlowTable table;
+    PacketInfo packet;
+    FlowDirection direction;
+    FlowInfo *flow;
+    AppDecodeStatus status;
+
+    memset(&packet, 0, sizeof(packet));
+    snprintf(packet.src_ip, sizeof(packet.src_ip), "10.0.0.1");
+    snprintf(packet.dst_ip, sizeof(packet.dst_ip), "10.0.0.2");
+    packet.protocol = PROTO_TCP;
+    packet.has_ports = 1;
+    packet.src_port = 50000;
+    packet.dst_port = 80;
+    packet.has_tcp_sequence = 1;
+
+    /*
+     * A bare zero-payload FIN on a brand-new, unclassified flow is tracked
+     * without ever allocating a stream buffer: this is the case that never
+     * reached tcp_reassembly at all before this behavior was added.
+     */
+    assert(flow_table_init(&table, 4, 4096, 60));
+    flow = flow_table_get_or_create(&table, &packet, 1, &direction);
+    assert(flow != NULL);
+    packet.tcp_sequence = 1;
+    packet.tcp_flags = TCP_FLAG_FIN;
+    assert(!flow_decode_stream_app(flow, direction, &packet, &status));
+    assert(status == APP_DECODE_STATUS_NO_MATCH);
+    assert(flow->directions[direction].tcp.fin_seen);
+    assert(flow->directions[direction].tcp.stream.data == NULL);
+    flow_table_cleanup(&table);
+
+    /*
+     * Classification releases the stream buffer immediately, and FIN/RST
+     * tracking keeps working afterward for a flow the table can now close.
+     */
+    assert(flow_table_init(&table, 4, 4096, 60));
+    flow = flow_table_get_or_create(&table, &packet, 1, &direction);
+    assert(flow != NULL);
+    packet.tcp_sequence = 100;
+    packet.tcp_flags = 0x18;
+    packet.has_payload = 1;
+    packet.payload = http_request;
+    packet.payload_capture_length = sizeof(http_request) - 1;
+    assert(flow_decode_stream_app(flow, direction, &packet, &status));
+    assert(status == APP_DECODE_STATUS_DECODED);
+    assert(flow->app_classified);
+    assert(flow->directions[direction].tcp.stream.data == NULL);
+
+    packet.tcp_sequence = 100 + (uint32_t)(sizeof(http_request) - 1);
+    packet.tcp_flags = (uint8_t)(TCP_FLAG_FIN | 0x10);
+    packet.has_payload = 0;
+    packet.payload_capture_length = 0;
+    assert(!flow_decode_stream_app(flow, direction, &packet, &status));
+    assert(flow->directions[direction].tcp.fin_seen);
+    assert(!flow_is_closed(flow));
+
+    tcp_reassembly_track_flags(&flow->directions[FLOW_DIR_B_TO_A].tcp, TCP_FLAG_FIN);
+    assert(flow_is_closed(flow));
+    flow_table_cleanup(&table);
+}
+
+static void test_capture_reassembled_flow_closes_on_rst_and_updates_stats(void) {
+    static const uint8_t http_request[] = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
+    unsigned char first_packet[256];
+    unsigned char second_packet[256];
+    size_t first_length;
+    size_t second_length;
+    char device_name[] = "en-test";
+    pcap_if_t device = make_device(device_name, 0, NULL, NULL);
+    AppConfig config = make_capture_config(device_name);
+    PacketStats stats;
+
+    first_length =
+        build_tcp_packet(first_packet, sizeof(first_packet), 100, http_request,
+                         sizeof(http_request) - 1);
+    /* A bare RST closes the flow even though it carries no payload. */
+    second_length = build_tcp_packet_with_flags(
+        second_packet, sizeof(second_packet), 100 + (uint32_t)(sizeof(http_request) - 1), 0x14,
+        NULL, 0);
+
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, first_packet, first_length, 10);
+    queue_packet(1, second_packet, second_length, 11);
+    config.max_packets = 2;
+    config.decode_app = true;
+    config.reassemble = true;
+    config.max_flows = 4;
+    config.stream_buffer_bytes = 512;
+
+    stats_init(&stats);
+    assert(capture_start_mocked(&config, &stats) == 0);
+    assert(stats.total_packets == 2);
+    assert(stats.app_decode_decoded == 1);
+    assert(stats.flow_count_created == 1);
+    assert(stats.flow_closed_rst == 1);
+    assert(stats.flow_closed_fin == 0);
+    assert(stats.flow_count_active_at_exit == 0);
+    /* The classified flow's buffer was already released before the RST. */
+    assert(stats.flow_stream_bytes_in_use == 0);
+}
+
 static void test_capture_static_helpers_and_signal_path(void) {
     struct pcap_pkthdr header;
     PacketInfo packet;
@@ -814,6 +925,8 @@ int main(void) {
     test_capture_write_refuses_existing_pcap_file();
     test_capture_reassembles_split_http_and_logs();
     test_capture_reassembles_ipv4_fragments_for_app_decode();
+    test_flow_decode_stream_app_tracks_fin_rst_and_releases_buffers();
+    test_capture_reassembled_flow_closes_on_rst_and_updates_stats();
     test_capture_static_helpers_and_signal_path();
 
     printf("All capture tests passed.\n");

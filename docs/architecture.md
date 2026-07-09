@@ -55,7 +55,39 @@ limited by `--max-flows`, `--stream-buffer-bytes`, and `--flow-timeout`.
 
 Reassembly is conservative. It is intended to recover enough in-order or simply
 reordered TCP stream data for HTTP headers, DNS-over-TCP frames, and TLS
-ClientHello metadata. It is not a full TCP stack.
+ClientHello metadata. It is not a full TCP stack: no retransmission timers,
+congestion control, or window scaling. Sequence math uses serial-number
+arithmetic so it stays correct across a 32-bit wraparound. Out-of-order data is
+held in a small bounded pending store (at most 8 segments, sharing the
+direction's byte cap); overlaps are trimmed by keeping already-accepted bytes
+and appending only new tail data. Every gap, overlap, and retransmission is
+counted per direction and rolled up into flow-table-level lifetime totals as
+flows leave the table, so counts survive eviction (`flow_table_snapshot_stats`
+in `flow.h`).
+
+FIN and RST are tracked for every TCP segment in a flow — including
+zero-payload segments (bare ACK/FIN/RST) and segments arriving after the flow
+has already been classified — which previously went unobserved because
+capture only fed payload-bearing, not-yet-classified segments into
+`tcp_reassembly_process_segment`. A flow counts as closed once either
+direction has seen RST or both directions have seen FIN
+(`flow_is_closed`), and closed flows are evicted proactively
+(`flow_table_evict_closed`) instead of waiting for `--flow-timeout`. Once a
+flow's app metadata is classified, its stream and pending-segment buffers are
+released immediately (`flow_release_reassembly_buffers` /
+`tcp_reassembly_direction_release_buffers`) since nothing reads them again;
+FIN/RST tracking (`tcp_reassembly_track_flags`) keeps working with no buffer
+allocated. A flow's first captured segment becomes its sequencing baseline
+regardless of whether SYN was seen, so flows discovered mid-stream (capture
+started after the connection was already in progress) classify normally from
+whatever point capture began.
+
+Eviction happens three ways, each counted separately: idle timeout
+(`flow_table_evict_idle`), capacity pressure evicting the least-recently-seen
+flow (`evict_oldest_flow`), and proactive closed-flow cleanup
+(`flow_table_evict_closed`). All three run opportunistically — triggered by a
+new packet arriving for any tracked flow — plus one final closed-flow pass at
+capture shutdown so flows closed by the very last packet are still counted.
 
 ### App Decoder
 
@@ -142,6 +174,16 @@ to caps. App decode counters track displayed packet statuses for no match,
 incomplete input, malformed input, truncation by configured caps, and successful
 decodes.
 
+When `--reassemble` is used, `stats_apply_flow_table` copies one point-in-time
+`flow_table_snapshot_stats` result into `PacketStats` at the end of capture,
+before the flow table is torn down: flows created, flows still active at exit,
+flows closed via FIN, flows closed via RST, flows evicted for idle timeout,
+flows evicted for capacity pressure, retransmissions, out-of-order segments,
+overlapping segments, gaps, and current/configured-maximum reassembly stream
+bytes. The snapshot combines already-evicted flows' lifetime totals with the
+live per-direction counters of flows still in the table, so nothing is lost to
+eviction ordering.
+
 ## Safety and Scope
 
 MiniSniffer is for learning, local diagnostics, and authorized network
@@ -170,4 +212,7 @@ network tool.
 - QUIC metadata limited to visible Initial-packet version/DCID/SCID; no header
   protection removal or decryption is attempted
 - ARP metadata limited to the common Ethernet/IPv4 shape
-- Conservative bounded TCP reassembly, not a full TCP stack
+- Conservative bounded TCP reassembly, not a full TCP stack: no retransmission
+  timers, congestion control, or window scaling
+- Idle-timeout and closed-flow eviction are opportunistic (triggered by new
+  packet arrivals, plus one pass at capture shutdown), not wall-clock timers

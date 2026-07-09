@@ -348,13 +348,26 @@ static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction, cons
     size_t stream_length;
     AppInfo decoded;
 
+    if (status != NULL) {
+        *status = APP_DECODE_STATUS_NO_MATCH;
+    }
     if (flow == NULL || packet == NULL || packet->protocol != PROTO_TCP ||
-        packet->has_tcp_sequence == 0 || packet->has_payload == 0 ||
-        packet->payload_capture_length == 0 || flow->app_classified ||
-        direction > FLOW_DIR_B_TO_A) {
-        if (status != NULL) {
-            *status = APP_DECODE_STATUS_NO_MATCH;
-        }
+        packet->has_tcp_sequence == 0 || direction > FLOW_DIR_B_TO_A) {
+        return false;
+    }
+
+    tcp_state = &flow->directions[direction].tcp;
+
+    if (flow->app_classified || packet->has_payload == 0 || packet->payload_capture_length == 0) {
+        /*
+         * Nothing new to decode: either this flow already has app metadata,
+         * or this segment carries no bytes. Still track FIN/RST so the flow
+         * table can reclaim the flow promptly once the connection actually
+         * closes, instead of waiting for the idle timeout. This is also the
+         * only path that ever observes bare FIN/RST/ACK segments, since they
+         * carry no payload.
+         */
+        tcp_reassembly_track_flags(tcp_state, packet->tcp_flags);
         return false;
     }
 
@@ -364,7 +377,6 @@ static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction, cons
         }
         return false;
     }
-    tcp_state = &flow->directions[direction].tcp;
     reassembly_result =
         tcp_reassembly_process_segment(tcp_state, packet->tcp_sequence, packet->tcp_flags,
                                        packet->payload, packet->payload_capture_length);
@@ -388,12 +400,15 @@ static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction, cons
         }
     }
 
-    {
-        flow->app = decoded;
-        flow->app_decode_status = APP_DECODE_STATUS_DECODED;
-        flow->app_classified = true;
-        return true;
-    }
+    flow->app = decoded;
+    flow->app_decode_status = APP_DECODE_STATUS_DECODED;
+    flow->app_classified = true;
+    /*
+     * Buffered bytes are no longer needed once classified; reclaim the memory
+     * now instead of holding it for the rest of the flow's time in the table.
+     */
+    flow_release_reassembly_buffers(flow);
+    return true;
 }
 
 /*
@@ -605,6 +620,15 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                     filter_flow_app_ptr = &flow->app;
                     flow_decode_status = flow->app_decode_status;
                     app_source = "flow";
+                    /*
+                     * Classification already happened on an earlier packet,
+                     * so the return value is not interesting here. Still
+                     * call in so FIN/RST keep getting tracked; without this,
+                     * a classified flow would never be observed closing.
+                     */
+                    if (config->decode_app) {
+                        flow_decode_stream_app(flow, direction, effective_info, NULL);
+                    }
                 } else if (config->decode_app &&
                            flow_decode_stream_app(flow, direction, effective_info,
                                                   &flow_decode_status)) {
@@ -629,6 +653,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                     flow->app_decode_status = APP_DECODE_STATUS_DECODED;
                     flow->app_classified = true;
                     flow_app_ptr = &flow->app;
+                    flow_release_reassembly_buffers(flow);
                 }
             }
         } else {
@@ -697,6 +722,13 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         printf("\nCapture stopped.\n");
     }
 
+    /*
+     * Flows closed by the very last packet processed would otherwise sit
+     * uncounted until a further packet triggered the next opportunistic
+     * eviction pass, which never comes once the loop above exits.
+     */
+    flow_table_evict_closed(&flow_table);
+    stats_apply_flow_table(stats, &flow_table);
     ipv4_fragment_table_cleanup(&fragment_table);
     flow_table_cleanup(&flow_table);
     close_pcap_writer(&pcap_writer);
