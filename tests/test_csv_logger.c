@@ -13,6 +13,16 @@
 #define TEST_CSV_LOG_PATH "/tmp/minisniffer_test_csv_logger.csv"
 #define TEST_CSV_TARGET_PATH "/tmp/minisniffer_test_csv_target.txt"
 
+static const char *EXPECTED_LEGACY_CSV_HEADER =
+    "packet_number,protocol,src_ip,src_port,dst_ip,dst_port,size\n";
+static const char *EXPECTED_PAYLOAD_CSV_HEADER =
+    "packet_number,protocol,src_ip,src_port,dst_ip,dst_port,size,payload_length,payload_hex,"
+    "payload_ascii\n";
+static const char *EXPECTED_APP_CSV_HEADER =
+    "timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_protocol,http_"
+    "method,http_host,http_path,http_status,dns_query,dns_type,dns_class,dns_rcode,tls_sni,tls_"
+    "alpn,tls_record_version,tls_client_version,app_source\n";
+
 static PacketInfo make_packet(void) {
     PacketInfo packet;
 
@@ -38,6 +48,27 @@ static AppInfo make_http_app(void) {
     return app;
 }
 
+static void test_csv_logger_writes_legacy_schema(void) {
+    FILE *file;
+    char line[1024];
+    PacketInfo packet = make_packet();
+
+    remove(TEST_CSV_LOG_PATH);
+    assert(csv_logger_open(TEST_CSV_LOG_PATH, false, false, 0) == 0);
+    assert(csv_logger_write_packet(&packet, NULL, NULL) == 0);
+    assert(csv_logger_close() == 0);
+
+    file = fopen(TEST_CSV_LOG_PATH, "r");
+    assert(file != NULL);
+    assert(fgets(line, sizeof(line), file) != NULL);
+    TEST_ASSERT_STRING_EQUAL(line, EXPECTED_LEGACY_CSV_HEADER);
+    assert(fgets(line, sizeof(line), file) != NULL);
+    TEST_ASSERT_STRING_EQUAL(line, "0,TCP,192.168.1.25,51432,93.184.216.34,80,512\n");
+
+    fclose(file);
+    remove(TEST_CSV_LOG_PATH);
+}
+
 static void test_csv_logger_writes_app_schema(void) {
     FILE *file;
     char line[1024];
@@ -53,18 +84,12 @@ static void test_csv_logger_writes_app_schema(void) {
     assert(file != NULL);
 
     assert(fgets(line, sizeof(line), file) != NULL);
-    assert(
-        strcmp(line,
-               "timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_"
-               "protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,"
-               "dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source\n") ==
-        0);
+    TEST_ASSERT_STRING_EQUAL(line, EXPECTED_APP_CSV_HEADER);
 
     assert(fgets(line, sizeof(line), file) != NULL);
-    assert(strcmp(line,
-                  "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,http,"
-                  "\"GET\",\"example.com\",\"/index.html\",,\"\",,,0,\"\",\"\",,,\"packet\"\n") ==
-           0);
+    TEST_ASSERT_STRING_EQUAL(
+        line, "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,http,"
+              "\"GET\",\"example.com\",\"/index.html\",,\"\",,,0,\"\",\"\",,,\"packet\"\n");
 
     fclose(file);
     remove(TEST_CSV_LOG_PATH);
@@ -211,10 +236,10 @@ static void test_csv_logger_writes_payload_schema_variants(void) {
     file = fopen(TEST_CSV_LOG_PATH, "r");
     assert(file != NULL);
     assert(fgets(line, sizeof(line), file) != NULL);
-    assert(strstr(line, "payload_hex") != NULL);
+    TEST_ASSERT_STRING_EQUAL(line, EXPECTED_PAYLOAD_CSV_HEADER);
     assert(fgets(line, sizeof(line), file) != NULL);
-    assert(strstr(line, "20 2b 22 01") != NULL);
-    assert(strstr(line, "' +\"\".") != NULL);
+    TEST_ASSERT_CONTAINS(line, "20 2b 22 01");
+    TEST_ASSERT_CONTAINS(line, "' +\"\".");
     assert(fgets(line, sizeof(line), file) != NULL);
     fclose(file);
     remove(TEST_CSV_LOG_PATH);
@@ -304,6 +329,7 @@ static void test_csv_logger_public_guards(void) {
 }
 
 int main(void) {
+    test_csv_logger_writes_legacy_schema();
     test_csv_logger_writes_app_schema();
     test_csv_logger_writes_none_app_source();
     test_csv_logger_escapes_quotes_and_commas();

@@ -1,9 +1,79 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "cli.h"
 #include "config.h"
+
+static const char *EXPECTED_USAGE =
+    "Usage: MiniSniffer [--help] [--interface <name>] [--count <number>]\n"
+    "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n"
+    "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n"
+    "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n"
+    "       [--decode-app] [--reassemble] [--max-flows <number>]\n"
+    "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n"
+    "       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]\n"
+    "       [--dns-query <name>] [--dns-type <type>] [--tls-sni <host>]\n"
+    "       [--tls-alpn <protocol>] [--stats]\n";
+
+typedef void (*CaptureFunction)(void *context);
+
+typedef struct CliCaptureContext {
+    int argc;
+    char **argv;
+    int result;
+} CliCaptureContext;
+
+static void capture_stream_output(int fd, FILE *stream, CaptureFunction function, void *context,
+                                  char *buffer, size_t buffer_size) {
+    FILE *capture;
+    int saved_fd;
+    size_t bytes_read;
+
+    assert(buffer != NULL);
+    assert(buffer_size > 0);
+
+    capture = tmpfile();
+    assert(capture != NULL);
+
+    fflush(stream);
+    saved_fd = dup(fd);
+    assert(saved_fd >= 0);
+    assert(dup2(fileno(capture), fd) >= 0);
+
+    function(context);
+
+    fflush(stream);
+    assert(dup2(saved_fd, fd) >= 0);
+    close(saved_fd);
+
+    rewind(capture);
+    bytes_read = fread(buffer, 1, buffer_size - 1, capture);
+    buffer[bytes_read] = '\0';
+    assert(!ferror(capture));
+    fclose(capture);
+}
+
+static void call_cli_print_usage(void *context) {
+    (void)context;
+    cli_print_usage("MiniSniffer");
+}
+
+static void call_cli_print_usage_null(void *context) {
+    (void)context;
+    cli_print_usage(NULL);
+}
+
+static void call_cli_parse_args(void *context) {
+    CliCaptureContext *capture = context;
+    AppConfig config;
+
+    config_init_defaults(&config);
+    capture->result = cli_parse_args(capture->argc, capture->argv, &config);
+}
 
 static void test_cli_parse_args_accepts_no_args(void) {
     AppConfig config;
@@ -489,8 +559,49 @@ static void test_cli_parse_args_rejects_empty_and_overflow_values(void) {
     assert(cli_parse_args(1, (char *[]){"MiniSniffer"}, NULL) != 0);
 }
 
+static void test_cli_print_usage_matches_golden_output(void) {
+    char output[1024];
+
+    capture_stream_output(STDOUT_FILENO, stdout, call_cli_print_usage, NULL, output,
+                          sizeof(output));
+    TEST_ASSERT_STRING_EQUAL(output, EXPECTED_USAGE);
+}
+
+static void test_cli_parse_args_unknown_flag_matches_golden_error(void) {
+    char output[2048];
+    char *argv[] = {"MiniSniffer", "--badflag"};
+    CliCaptureContext capture = {2, argv, 0};
+    char expected[2048];
+
+    snprintf(expected, sizeof(expected), "Error: unknown option.\n%s", EXPECTED_USAGE);
+    capture_stream_output(STDERR_FILENO, stderr, call_cli_parse_args, &capture, output,
+                          sizeof(output));
+
+    assert(capture.result != 0);
+    TEST_ASSERT_STRING_EQUAL(output, expected);
+}
+
+static void test_cli_parse_args_missing_value_matches_golden_error(void) {
+    char output[2048];
+    char *argv[] = {"MiniSniffer", "--interface"};
+    CliCaptureContext capture = {2, argv, 0};
+    char expected[2048];
+
+    snprintf(expected, sizeof(expected), "Error: --interface requires a value.\n%s",
+             EXPECTED_USAGE);
+    capture_stream_output(STDERR_FILENO, stderr, call_cli_parse_args, &capture, output,
+                          sizeof(output));
+
+    assert(capture.result != 0);
+    TEST_ASSERT_STRING_EQUAL(output, expected);
+}
+
 static void test_cli_print_usage_accepts_null_program_name(void) {
-    cli_print_usage(NULL);
+    char output[1024];
+
+    capture_stream_output(STDOUT_FILENO, stdout, call_cli_print_usage_null, NULL, output,
+                          sizeof(output));
+    TEST_ASSERT_STRING_EQUAL(output, EXPECTED_USAGE);
 }
 
 int main(void) {
@@ -525,6 +636,9 @@ int main(void) {
     test_cli_parse_args_rejects_oversized_strings();
     test_cli_parse_args_accepts_dns_types_and_uppercase_hex();
     test_cli_parse_args_rejects_empty_and_overflow_values();
+    test_cli_print_usage_matches_golden_output();
+    test_cli_parse_args_unknown_flag_matches_golden_error();
+    test_cli_parse_args_missing_value_matches_golden_error();
     test_cli_print_usage_accepts_null_program_name();
 
     printf("All cli tests passed.\n");

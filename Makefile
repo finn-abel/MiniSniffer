@@ -10,6 +10,7 @@ ifeq ($(strip $(PCAP_LIBS)),)
 PCAP_LIBS = -lpcap
 endif
 INCLUDES = -Iinclude $(PCAP_CFLAGS)
+TEST_INCLUDES = $(INCLUDES) -Itests
 LDLIBS ?= $(PCAP_LIBS)
 COVERAGE_CFLAGS = -Wall -Wextra -Werror -std=c11 -g -O0 -fprofile-instr-generate -fcoverage-mapping
 COVERAGE_DIR ?= /tmp/minisniffer-coverage
@@ -34,7 +35,7 @@ TEST_SUPPORT_OBJ = $(TEST_SUPPORT_SRC:.c=.o)
 
 TEST_TARGETS = $(TEST_SRC:tests/%.c=%)
 TEST_OBJ = $(TEST_SRC:.c=.o)
-FORMAT_FILES = $(SRC) $(TEST_SRC) $(wildcard include/*.h)
+FORMAT_FILES = $(SRC) $(TEST_SRC) $(wildcard include/*.h tests/*.h)
 STATIC_FILES = $(SRC) $(TEST_SRC)
 
 all: $(TARGET)
@@ -42,11 +43,14 @@ all: $(TARGET)
 $(TARGET): $(OBJ)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDLIBS)
 
+tests/%.o: tests/%.c
+	$(CC) $(CFLAGS) $(TEST_INCLUDES) -c $< -o $@
+
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 %: tests/%.o $(TEST_SUPPORT_OBJ)
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) $(TEST_INCLUDES) -o $@ $^ $(LDLIBS)
 
 test: $(TEST_TARGETS)
 	@set -e; \
