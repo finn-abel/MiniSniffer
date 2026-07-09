@@ -1,9 +1,9 @@
 # MiniSniffer
 
 MiniSniffer is a small C packet sniffer and network analyzer built on
-libpcap. It captures live packets, parses Ethernet/IPv4 traffic, applies
-simple filters, prints readable packet summaries, optionally writes CSV logs,
-and can report capture statistics when the run completes.
+libpcap. It captures live packets, parses common IPv4/IPv6 pcap link-layer
+formats, applies simple filters, prints readable packet summaries, optionally
+writes CSV logs, and can report capture statistics when the run completes.
 
 ## Documentation
 
@@ -287,9 +287,11 @@ flow event with the first packet from that flow that passes all active filters:
 flow tcp 192.168.1.25:51432 <-> 93.184.216.34:443 app=tls sni=example.com alpn=h2
 ```
 
-Non-IPv4 Ethernet packets are displayed as `OTHER` when they pass the active
-filters. Capture startup rejects interfaces whose libpcap data-link type is not
-Ethernet, rather than interpreting another link-layer format incorrectly.
+Supported pcap link-layer formats include Ethernet, raw IPv4/IPv6, Linux cooked
+capture v1/v2, and BSD null/loopback. Packets whose link or network layer cannot
+be decoded are displayed as `OTHER` when they pass active filters. Capture
+startup rejects unsupported libpcap data-link types with a clear error rather
+than interpreting an unknown frame format incorrectly.
 
 Application metadata is escaped before terminal output. Control bytes are
 shown as `\xNN` text and cannot emit terminal control sequences.
@@ -587,7 +589,7 @@ Important modules:
 
 - `src/cli.c` parses command-line options into runtime configuration.
 - `src/capture.c` selects an interface, opens libpcap, and runs capture.
-- `src/parser.c` parses Ethernet/IPv4 packet metadata.
+- `src/parser.c` selects supported link-layer offsets and parses IPv4/IPv6 packet metadata.
 - `src/filters.c` applies protocol, port, host, payload, and app filters.
 - `src/app_decoder.c` dispatches packet-local and stream app decoders.
 - `src/tcp_reassembly.c` and `src/stream_buffer.c` handle bounded stream assembly.
@@ -597,16 +599,18 @@ Important modules:
 
 ## Limitations
 
-- MiniSniffer currently parses Ethernet IPv4 packets.
+- MiniSniffer parses Ethernet, raw IPv4/IPv6, Linux cooked capture v1/v2, and
+  BSD null/loopback captures when libpcap reports those datalink types.
 - Fragmented IPv4 datagrams retain coarse protocol/address metadata but are not
   decoded at the transport or application layers because IP reassembly is not
   implemented.
 - TCP and UDP ports are parsed only when enough header bytes were captured.
-- IPv4 total length and UDP length fields bound all transport payload views;
-  Ethernet padding is never treated as payload.
+- IPv4 total length, IPv6 payload length, and UDP length fields bound transport
+  payload views; link-layer padding is never treated as payload.
 - Payload display and legacy payload CSV output are bounded to 256 bytes.
 - Payload filters and packet-local app decoders inspect a bounded decode window.
-- IPv6 packet parsing is not implemented.
+- IPv6 extension-header walking is not implemented; transport metadata is parsed
+  only when the IPv6 next-header field directly names TCP, UDP, or ICMPv6.
 - App decoding is intentionally limited to cleartext HTTP/1.x metadata, DNS
   query metadata, and TLS ClientHello metadata.
 - TCP reassembly is conservative and bounded; it is not a full TCP stack.
