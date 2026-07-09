@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define MINISNIFFER_IP_TEXT_LEN 46
 #define MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES 256
 #define MINISNIFFER_APP_TEXT_LEN 256
 
@@ -65,8 +66,8 @@ typedef struct {
  * has_ports is non-zero only when src_port and dst_port are valid.
  */
 typedef struct {
-    char src_ip[16];
-    char dst_ip[16];
+    char src_ip[MINISNIFFER_IP_TEXT_LEN];
+    char dst_ip[MINISNIFFER_IP_TEXT_LEN];
 
     uint16_t src_port;
     uint16_t dst_port;

@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <pcap/pcap.h>
 #include <string.h>
 
 #include "config.h"
@@ -7,16 +8,25 @@
 #define ETHERNET_HEADER_LEN 14
 #define ETHERNET_ETHERTYPE_OFFSET 12
 #define ETHERTYPE_IPV4 0x0800
+#define ETHERTYPE_IPV6 0x86dd
 #define IPV4_MIN_HEADER_LEN 20
 #define IPV4_VERSION 4
+#define IPV6_HEADER_LEN 40
+#define IPV6_VERSION 6
 #define IPV4_PROTOCOL_ICMP 1
 #define IPV4_PROTOCOL_TCP 6
 #define IPV4_PROTOCOL_UDP 17
+#define IPV6_PROTOCOL_ICMPV6 58
 #define TCP_MIN_HEADER_LEN 20
 #define UDP_HEADER_LEN 8
 #define ICMP_HEADER_LEN 8
 #define IPV4_FRAGMENT_OFFSET_MASK 0x1fff
 #define IPV4_MORE_FRAGMENTS 0x2000
+#define LINUX_SLL_HEADER_LEN 16
+#define LINUX_SLL2_HEADER_LEN 20
+#define NULL_LOOPBACK_HEADER_LEN 4
+
+typedef enum { NETWORK_UNKNOWN = 0, NETWORK_IPV4, NETWORK_IPV6 } NetworkLayer;
 
 /*
  * Reads a two-byte network-order integer without assuming packet alignment.
@@ -45,6 +55,18 @@ static uint32_t read_u32_network(const unsigned char *bytes) {
  */
 static void set_ipv4_protocol(unsigned char protocol_number, PacketInfo *info) {
     if (protocol_number == IPV4_PROTOCOL_ICMP) {
+        info->protocol = PROTO_ICMP;
+    } else if (protocol_number == IPV4_PROTOCOL_TCP) {
+        info->protocol = PROTO_TCP;
+    } else if (protocol_number == IPV4_PROTOCOL_UDP) {
+        info->protocol = PROTO_UDP;
+    } else {
+        info->protocol = PROTO_OTHER;
+    }
+}
+
+static void set_ip_protocol(unsigned char protocol_number, PacketInfo *info) {
+    if (protocol_number == IPV4_PROTOCOL_ICMP || protocol_number == IPV6_PROTOCOL_ICMPV6) {
         info->protocol = PROTO_ICMP;
     } else if (protocol_number == IPV4_PROTOCOL_TCP) {
         info->protocol = PROTO_TCP;
@@ -215,67 +237,42 @@ static void clear_transport_ports(PacketInfo *info) {
     info->has_ports = 0;
 }
 
-int parser_parse_packet(const unsigned char *packet, size_t packet_len, PacketInfo *info) {
+static void initialize_packet_info(const unsigned char *packet, size_t packet_len,
+                                   PacketInfo *info) {
+    (void)packet;
+
+    memset(info, 0, sizeof(*info));
+    info->size = packet_len;
+    info->protocol = PROTO_OTHER;
+    info->src_ip[0] = '\0';
+    info->dst_ip[0] = '\0';
+}
+
+static int parse_ipv4_packet(const unsigned char *packet, size_t packet_len, size_t ip_offset,
+                             PacketInfo *info) {
     const unsigned char *ip_header;
-    uint16_t ether_type_network;
-    uint16_t ether_type;
     uint16_t ip_total_length;
     uint16_t fragment_field;
     size_t captured_ip_length;
     size_t parsed_packet_len;
     size_t ip_header_len;
     unsigned char ip_version;
-
-    if (info == NULL) {
-        return 1;
-    }
-
-    /* Start with a safe OTHER summary, then refine it as headers are recognized. */
-    memset(info, 0, sizeof(*info));
-    info->size = packet_len;
-    info->protocol = PROTO_OTHER;
-    info->src_ip[0] = '\0';
-    info->dst_ip[0] = '\0';
-
-    if (packet_len == 0) {
-        return 0;
-    }
-    if (packet == NULL) {
-        return 1;
-    }
-    if (packet_len < ETHERNET_HEADER_LEN) {
+    if (packet_len < ip_offset + IPV4_MIN_HEADER_LEN) {
         return 0;
     }
 
     /*
-     * Ethernet parsing is the first gate.
-     * Ethernet EtherType lives at bytes 12-13.
-     * Copy bytes out before ntohs so raw packet memory is never direct-cast.
-     */
-    memcpy(&ether_type_network, packet + ETHERNET_ETHERTYPE_OFFSET, sizeof(ether_type_network));
-    ether_type = ntohs(ether_type_network);
-
-    if (ether_type != ETHERTYPE_IPV4) {
-        return 0;
-    }
-
-    if (packet_len < ETHERNET_HEADER_LEN + IPV4_MIN_HEADER_LEN) {
-        return 0;
-    }
-
-    /*
-     * IPv4 starts immediately after Ethernet.
      * The first byte contains both version and IHL, so validate both before
      * reading any deeper IPv4 fields.
      */
-    ip_header = packet + ETHERNET_HEADER_LEN;
+    ip_header = packet + ip_offset;
     ip_version = (unsigned char)(ip_header[0] >> 4);
     ip_header_len = (size_t)(ip_header[0] & 0x0F) * 4;
 
     if (ip_version != IPV4_VERSION || ip_header_len < IPV4_MIN_HEADER_LEN) {
         return 0;
     }
-    if (packet_len < ETHERNET_HEADER_LEN + ip_header_len) {
+    if (packet_len < ip_offset + ip_header_len) {
         return 0;
     }
 
@@ -283,10 +280,10 @@ int parser_parse_packet(const unsigned char *packet, size_t packet_len, PacketIn
     if (ip_total_length < ip_header_len) {
         return 0;
     }
-    captured_ip_length = packet_len - ETHERNET_HEADER_LEN;
-    parsed_packet_len = ETHERNET_HEADER_LEN + (captured_ip_length < (size_t)ip_total_length
-                                                   ? captured_ip_length
-                                                   : (size_t)ip_total_length);
+    captured_ip_length = packet_len - ip_offset;
+    parsed_packet_len =
+        ip_offset + (captured_ip_length < (size_t)ip_total_length ? captured_ip_length
+                                                                  : (size_t)ip_total_length);
 
     /*
      * inet_ntop handles byte-order details for IPv4 address presentation.
@@ -318,17 +315,264 @@ int parser_parse_packet(const unsigned char *packet, size_t packet_len, PacketIn
     }
 
     if (info->protocol == PROTO_TCP) {
-        parse_tcp_ports(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
-        parse_tcp_sequence_and_flags(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len,
-                                     info);
-        parse_tcp_payload(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_tcp_ports(packet, parsed_packet_len, ip_offset + ip_header_len, info);
+        parse_tcp_sequence_and_flags(packet, parsed_packet_len, ip_offset + ip_header_len, info);
+        parse_tcp_payload(packet, parsed_packet_len, ip_offset + ip_header_len, info);
     } else if (info->protocol == PROTO_UDP) {
-        parse_udp_ports(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
-        parse_udp_payload(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_udp_ports(packet, parsed_packet_len, ip_offset + ip_header_len, info);
+        parse_udp_payload(packet, parsed_packet_len, ip_offset + ip_header_len, info);
     } else if (info->protocol == PROTO_ICMP) {
         clear_transport_ports(info);
-        parse_icmp_payload(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_icmp_payload(packet, parsed_packet_len, ip_offset + ip_header_len, info);
     }
 
     return 0;
+}
+
+static int parse_ipv6_packet(const unsigned char *packet, size_t packet_len, size_t ip_offset,
+                             PacketInfo *info) {
+    const unsigned char *ip_header;
+    size_t captured_ip_length;
+    size_t parsed_packet_len;
+    uint16_t payload_length;
+    unsigned char next_header;
+    unsigned char ip_version;
+    size_t transport_offset;
+
+    if (packet_len < ip_offset + IPV6_HEADER_LEN) {
+        return 0;
+    }
+
+    ip_header = packet + ip_offset;
+    ip_version = (unsigned char)(ip_header[0] >> 4);
+    if (ip_version != IPV6_VERSION) {
+        return 0;
+    }
+
+    payload_length = read_u16_network(ip_header + 4);
+    next_header = ip_header[6];
+    captured_ip_length = packet_len - ip_offset;
+    parsed_packet_len = ip_offset + (captured_ip_length < IPV6_HEADER_LEN + (size_t)payload_length
+                                         ? captured_ip_length
+                                         : IPV6_HEADER_LEN + (size_t)payload_length);
+
+    if (inet_ntop(AF_INET6, ip_header + 8, info->src_ip, sizeof(info->src_ip)) == NULL) {
+        return 1;
+    }
+    if (inet_ntop(AF_INET6, ip_header + 24, info->dst_ip, sizeof(info->dst_ip)) == NULL) {
+        return 1;
+    }
+
+    set_ip_protocol(next_header, info);
+    clear_transport_ports(info);
+    transport_offset = ip_offset + IPV6_HEADER_LEN;
+
+    if (info->protocol == PROTO_TCP) {
+        parse_tcp_ports(packet, parsed_packet_len, transport_offset, info);
+        parse_tcp_sequence_and_flags(packet, parsed_packet_len, transport_offset, info);
+        parse_tcp_payload(packet, parsed_packet_len, transport_offset, info);
+    } else if (info->protocol == PROTO_UDP) {
+        parse_udp_ports(packet, parsed_packet_len, transport_offset, info);
+        parse_udp_payload(packet, parsed_packet_len, transport_offset, info);
+    } else if (info->protocol == PROTO_ICMP) {
+        parse_icmp_payload(packet, parsed_packet_len, transport_offset, info);
+    }
+
+    return 0;
+}
+
+static NetworkLayer network_from_ethertype(uint16_t ethertype) {
+    if (ethertype == ETHERTYPE_IPV4) {
+        return NETWORK_IPV4;
+    }
+    if (ethertype == ETHERTYPE_IPV6) {
+        return NETWORK_IPV6;
+    }
+
+    return NETWORK_UNKNOWN;
+}
+
+static uint32_t read_u32_little(const unsigned char *bytes) {
+    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) | ((uint32_t)bytes[2] << 16) |
+           ((uint32_t)bytes[3] << 24);
+}
+
+static uint32_t read_u32_big(const unsigned char *bytes) {
+    return ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) | ((uint32_t)bytes[2] << 8) |
+           (uint32_t)bytes[3];
+}
+
+static NetworkLayer network_from_null_family(const unsigned char *bytes) {
+    uint32_t little = read_u32_little(bytes);
+    uint32_t big = read_u32_big(bytes);
+
+    if (little == AF_INET || big == AF_INET) {
+        return NETWORK_IPV4;
+    }
+    if (little == AF_INET6 || big == AF_INET6 || little == 24 || big == 24 || little == 28 ||
+        big == 28 || little == 30 || big == 30) {
+        return NETWORK_IPV6;
+    }
+
+    return NETWORK_UNKNOWN;
+}
+
+static NetworkLayer infer_raw_ip_network(const unsigned char *packet, size_t packet_len) {
+    unsigned char version;
+
+    if (packet == NULL || packet_len == 0) {
+        return NETWORK_UNKNOWN;
+    }
+
+    version = (unsigned char)(packet[0] >> 4);
+    if (version == IPV4_VERSION) {
+        return NETWORK_IPV4;
+    }
+    if (version == IPV6_VERSION) {
+        return NETWORK_IPV6;
+    }
+
+    return NETWORK_UNKNOWN;
+}
+
+static int select_network_layer(const unsigned char *packet, size_t packet_len, int datalink_type,
+                                size_t *ip_offset, NetworkLayer *network) {
+    uint16_t ethertype;
+
+    if (ip_offset == NULL || network == NULL) {
+        return 1;
+    }
+    *ip_offset = 0;
+    *network = NETWORK_UNKNOWN;
+
+    if (packet == NULL || packet_len == 0) {
+        return 0;
+    }
+
+    if (datalink_type == DLT_EN10MB) {
+        if (packet_len < ETHERNET_HEADER_LEN) {
+            return 0;
+        }
+        ethertype = read_u16_network(packet + ETHERNET_ETHERTYPE_OFFSET);
+        *ip_offset = ETHERNET_HEADER_LEN;
+        *network = network_from_ethertype(ethertype);
+        return 0;
+    }
+
+    if (datalink_type == DLT_RAW) {
+        *network = infer_raw_ip_network(packet, packet_len);
+        return 0;
+    }
+
+#ifdef DLT_IPV4
+    if (datalink_type == DLT_IPV4) {
+        *network = NETWORK_IPV4;
+        return 0;
+    }
+#endif
+
+#ifdef DLT_IPV6
+    if (datalink_type == DLT_IPV6) {
+        *network = NETWORK_IPV6;
+        return 0;
+    }
+#endif
+
+    if (datalink_type == DLT_NULL || datalink_type == DLT_LOOP) {
+        if (packet_len < NULL_LOOPBACK_HEADER_LEN) {
+            return 0;
+        }
+        *ip_offset = NULL_LOOPBACK_HEADER_LEN;
+        *network = network_from_null_family(packet);
+        return 0;
+    }
+
+#ifdef DLT_LINUX_SLL
+    if (datalink_type == DLT_LINUX_SLL) {
+        if (packet_len < LINUX_SLL_HEADER_LEN) {
+            return 0;
+        }
+        ethertype = read_u16_network(packet + 14);
+        *ip_offset = LINUX_SLL_HEADER_LEN;
+        *network = network_from_ethertype(ethertype);
+        return 0;
+    }
+#endif
+
+#ifdef DLT_LINUX_SLL2
+    if (datalink_type == DLT_LINUX_SLL2) {
+        if (packet_len < LINUX_SLL2_HEADER_LEN) {
+            return 0;
+        }
+        ethertype = read_u16_network(packet);
+        *ip_offset = LINUX_SLL2_HEADER_LEN;
+        *network = network_from_ethertype(ethertype);
+        return 0;
+    }
+#endif
+
+    return 0;
+}
+
+int parser_supports_datalink(int datalink_type) {
+    if (datalink_type == DLT_EN10MB || datalink_type == DLT_RAW || datalink_type == DLT_NULL ||
+        datalink_type == DLT_LOOP) {
+        return 1;
+    }
+#ifdef DLT_IPV4
+    if (datalink_type == DLT_IPV4) {
+        return 1;
+    }
+#endif
+#ifdef DLT_IPV6
+    if (datalink_type == DLT_IPV6) {
+        return 1;
+    }
+#endif
+#ifdef DLT_LINUX_SLL
+    if (datalink_type == DLT_LINUX_SLL) {
+        return 1;
+    }
+#endif
+#ifdef DLT_LINUX_SLL2
+    if (datalink_type == DLT_LINUX_SLL2) {
+        return 1;
+    }
+#endif
+
+    return 0;
+}
+
+int parser_parse_packet_with_datalink(const unsigned char *packet, size_t packet_len,
+                                      int datalink_type, PacketInfo *info) {
+    size_t ip_offset;
+    NetworkLayer network;
+
+    if (info == NULL) {
+        return 1;
+    }
+    initialize_packet_info(packet, packet_len, info);
+
+    if (packet_len == 0) {
+        return 0;
+    }
+    if (packet == NULL) {
+        return 1;
+    }
+
+    if (select_network_layer(packet, packet_len, datalink_type, &ip_offset, &network) != 0) {
+        return 1;
+    }
+    if (network == NETWORK_IPV4) {
+        return parse_ipv4_packet(packet, packet_len, ip_offset, info);
+    }
+    if (network == NETWORK_IPV6) {
+        return parse_ipv6_packet(packet, packet_len, ip_offset, info);
+    }
+
+    return 0;
+}
+
+int parser_parse_packet(const unsigned char *packet, size_t packet_len, PacketInfo *info) {
+    return parser_parse_packet_with_datalink(packet, packet_len, DLT_EN10MB, info);
 }

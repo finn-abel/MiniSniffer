@@ -456,7 +456,7 @@ static void test_capture_setup_failures(void) {
 
     reset_fake_pcap();
     set_single_device(&device);
-    fake_pcap.datalink = DLT_RAW;
+    fake_pcap.datalink = 999999;
     config = make_capture_config(device_name);
     assert(capture_start_mocked(&config, NULL) != 0);
     assert(fake_pcap.close_count == 1);

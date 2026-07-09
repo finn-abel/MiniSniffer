@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <pcap/pcap.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -304,6 +305,109 @@ static void test_parser_rejects_invalid_ipv4_lengths(void) {
     assert(info.protocol == PROTO_OTHER);
 }
 
+static void test_parser_parse_packet_with_raw_ipv4_datalink(void) {
+    const unsigned char packet[] = {0x45, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00, 0x40, 0x06,
+                                    0x00, 0x00, 0xc0, 0xa8, 0x01, 0x19, 0x8e, 0xfa, 0xbe, 0x0e,
+                                    0xc8, 0xe8, 0x01, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                    0x00, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    PacketInfo info;
+
+    assert(parser_parse_packet_with_datalink(packet, sizeof(packet), DLT_RAW, &info) == 0);
+    assert(info.protocol == PROTO_TCP);
+    assert(strcmp(info.src_ip, "192.168.1.25") == 0);
+    assert(strcmp(info.dst_ip, "142.250.190.14") == 0);
+    assert(info.src_port == 51432);
+    assert(info.dst_port == 443);
+}
+
+static void test_parser_parse_packet_with_raw_ipv6_datalink(void) {
+    const unsigned char packet[] = {
+        0x60, 0x00, 0x00, 0x00, 0x00, 0x14, 0x06, 0x40, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xc8, 0xe8, 0x01, 0xbb, 0x00,
+        0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x50, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    PacketInfo info;
+
+    assert(parser_parse_packet_with_datalink(packet, sizeof(packet), DLT_RAW, &info) == 0);
+    assert(info.protocol == PROTO_TCP);
+    assert(strcmp(info.src_ip, "2001:db8::1") == 0);
+    assert(strcmp(info.dst_ip, "2001:db8::2") == 0);
+    assert(info.src_port == 51432);
+    assert(info.dst_port == 443);
+    assert(info.has_tcp_sequence == 1);
+    assert(info.tcp_sequence == 1);
+}
+
+static void test_parser_parse_packet_with_null_and_loopback_datalinks(void) {
+    const unsigned char null_ipv4[] = {0x02, 0x00, 0x00, 0x00, 0x45, 0x00, 0x00, 0x1c,
+                                       0x00, 0x00, 0x00, 0x00, 0x40, 0x11, 0x00, 0x00,
+                                       0xc0, 0xa8, 0x01, 0x19, 0xe0, 0x00, 0x00, 0xfb,
+                                       0x14, 0xe9, 0x14, 0xe9, 0x00, 0x08, 0x00, 0x00};
+    const unsigned char loop_ipv6[] = {0x00, 0x00, 0x00, 0x1e, 0x60, 0x00, 0x00, 0x00, 0x00, 0x08,
+                                       0x3a, 0x40, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+                                       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x20, 0x01,
+                                       0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                       0x00, 0x00, 0x00, 0x02, 0x80, 0x00, 0x00, 0x00};
+    PacketInfo info;
+
+    assert(parser_parse_packet_with_datalink(null_ipv4, sizeof(null_ipv4), DLT_NULL, &info) == 0);
+    assert(info.protocol == PROTO_UDP);
+    assert(strcmp(info.src_ip, "192.168.1.25") == 0);
+    assert(info.src_port == 5353);
+
+    assert(parser_parse_packet_with_datalink(loop_ipv6, sizeof(loop_ipv6), DLT_LOOP, &info) == 0);
+    assert(info.protocol == PROTO_ICMP);
+    assert(strcmp(info.src_ip, "2001:db8::1") == 0);
+    assert(strcmp(info.dst_ip, "2001:db8::2") == 0);
+}
+
+static void test_parser_parse_packet_with_linux_cooked_datalinks(void) {
+#ifdef DLT_LINUX_SLL
+    const unsigned char sll_ipv4[] = {
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0,    1,    2,    3,    4,    5,    0x00, 0x00, 0x08,
+        0x00, 0x45, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x40, 0x11, 0x00, 0x00, 0xc0, 0xa8,
+        0x01, 0x19, 0xe0, 0x00, 0x00, 0xfb, 0x14, 0xe9, 0x14, 0xe9, 0x00, 0x08, 0x00, 0x00};
+#endif
+#ifdef DLT_LINUX_SLL2
+    const unsigned char sll2_ipv6[] = {
+        0x86, 0xdd, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00, 0x00,
+        0x06, 0,    1,    2,    3,    4,    5,    0x60, 0x00, 0x00, 0x00, 0x00, 0x08,
+        0x3a, 0x40, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x80, 0x00, 0x00, 0x00};
+#endif
+    PacketInfo info;
+
+#ifdef DLT_LINUX_SLL
+    assert(parser_parse_packet_with_datalink(sll_ipv4, sizeof(sll_ipv4), DLT_LINUX_SLL, &info) ==
+           0);
+    assert(info.protocol == PROTO_UDP);
+    assert(strcmp(info.dst_ip, "224.0.0.251") == 0);
+    assert(info.dst_port == 5353);
+#endif
+
+#ifdef DLT_LINUX_SLL2
+    assert(parser_parse_packet_with_datalink(sll2_ipv6, sizeof(sll2_ipv6), DLT_LINUX_SLL2, &info) ==
+           0);
+    assert(info.protocol == PROTO_ICMP);
+    assert(strcmp(info.dst_ip, "2001:db8::2") == 0);
+#endif
+}
+
+static void test_parser_reports_supported_datalinks(void) {
+    assert(parser_supports_datalink(DLT_EN10MB));
+    assert(parser_supports_datalink(DLT_RAW));
+    assert(parser_supports_datalink(DLT_NULL));
+    assert(parser_supports_datalink(DLT_LOOP));
+#ifdef DLT_LINUX_SLL
+    assert(parser_supports_datalink(DLT_LINUX_SLL));
+#endif
+#ifdef DLT_LINUX_SLL2
+    assert(parser_supports_datalink(DLT_LINUX_SLL2));
+#endif
+    assert(!parser_supports_datalink(999999));
+}
+
 int main(void) {
     test_parser_parse_packet_initializes_basic_info();
     test_parser_parse_packet_marks_short_frame_as_other();
@@ -326,6 +430,11 @@ int main(void) {
     test_parser_rejects_invalid_transport_header_lengths();
     test_parser_extracts_icmp_payload();
     test_parser_rejects_invalid_ipv4_lengths();
+    test_parser_parse_packet_with_raw_ipv4_datalink();
+    test_parser_parse_packet_with_raw_ipv6_datalink();
+    test_parser_parse_packet_with_null_and_loopback_datalinks();
+    test_parser_parse_packet_with_linux_cooked_datalinks();
+    test_parser_reports_supported_datalinks();
 
     printf("All parser tests passed.\n");
 

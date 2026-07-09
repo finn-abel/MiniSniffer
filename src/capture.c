@@ -386,6 +386,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     const char *device;
     pcap_t *handle;
     pcap_dumper_t *pcap_writer = NULL;
+    int datalink_type;
     FlowTable flow_table = {0};
     bool flow_table_ready = false;
     uint32_t captured_packets = 0;
@@ -445,10 +446,10 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         printf("Reading packets from pcap file: %s\n", device);
     }
 
-    if (pcap_datalink(handle) != DLT_EN10MB) {
-        fprintf(stderr,
-                "Error: interface '%s' uses unsupported data-link type %d; Ethernet is required.\n",
-                device, pcap_datalink(handle));
+    datalink_type = pcap_datalink(handle);
+    if (!parser_supports_datalink(datalink_type)) {
+        fprintf(stderr, "Error: capture source '%s' uses unsupported data-link type %d.\n", device,
+                datalink_type);
         pcap_close(handle);
         return 1;
     }
@@ -515,7 +516,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             break;
         }
 
-        if (parser_parse_packet(packet, header->caplen, &info) != 0) {
+        if (parser_parse_packet_with_datalink(packet, header->caplen, datalink_type, &info) != 0) {
             fprintf(stderr, "Packet parsing failed.\n");
             (void)csv_logger_close();
             close_pcap_writer(&pcap_writer);
