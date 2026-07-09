@@ -18,6 +18,7 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
     fprintf(stream, "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
+    fprintf(stream, "       [--read <file.pcap>] [--write <file.pcap>]\n");
     fprintf(stream, "       [--json] [--flush-log <always|line|exit>]\n");
     fprintf(stream, "       [--decode-app] [--reassemble] [--max-flows <number>]\n");
     fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n");
@@ -424,6 +425,24 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
                 return fail_with_error(program_name, "log path is too long.");
             }
             config->logging_enabled = 1;
+            i++;
+        } else if (strcmp(argv[i], "--read") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--read requires a file path.");
+            }
+            if (copy_arg(config->read_path, sizeof(config->read_path), argv[i + 1]) != 0) {
+                return fail_with_error(program_name, "read path is too long.");
+            }
+            config->read_path_enabled = true;
+            i++;
+        } else if (strcmp(argv[i], "--write") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--write requires a file path.");
+            }
+            if (copy_arg(config->write_path, sizeof(config->write_path), argv[i + 1]) != 0) {
+                return fail_with_error(program_name, "write path is too long.");
+            }
+            config->write_path_enabled = true;
             i++;
         } else if (strcmp(argv[i], "--flush-log") == 0) {
             if (!has_value(argc, argv, i)) {

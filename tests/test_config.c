@@ -19,6 +19,10 @@ static void test_config_defaults_capture_options(void) {
     assert(config.color_enabled == true);
     assert(config.json_output == false);
     assert(config.log_flush_mode == LOG_FLUSH_LINE);
+    assert(config.read_path_enabled == false);
+    assert(strcmp(config.read_path, "") == 0);
+    assert(config.write_path_enabled == false);
+    assert(strcmp(config.write_path, "") == 0);
 }
 
 static void test_config_defaults_app_decode_options(void) {

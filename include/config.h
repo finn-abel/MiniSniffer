@@ -46,6 +46,10 @@ typedef struct {
     bool color_enabled;
     bool json_output;
     LogFlushMode log_flush_mode;
+    bool read_path_enabled;
+    char read_path[256];
+    bool write_path_enabled;
+    char write_path[256];
 
     int filter_protocol_enabled;
     Protocol filter_protocol;

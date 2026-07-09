@@ -14,6 +14,7 @@ static const char *EXPECTED_USAGE =
     "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n"
     "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n"
     "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n"
+    "       [--read <file.pcap>] [--write <file.pcap>]\n"
     "       [--json] [--flush-log <always|line|exit>]\n"
     "       [--decode-app] [--reassemble] [--max-flows <number>]\n"
     "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n"
@@ -189,6 +190,19 @@ static void test_cli_parse_args_sets_log(void) {
     assert(cli_parse_args(3, argv, &config) == 0);
     assert(config.logging_enabled == 1);
     assert(strcmp(config.log_path, "packets.csv") == 0);
+}
+
+static void test_cli_parse_args_sets_offline_pcap_paths(void) {
+    AppConfig config;
+    char *argv[] = {"MiniSniffer", "--read", "input.pcap", "--write", "filtered.pcap"};
+
+    config_init_defaults(&config);
+
+    assert(cli_parse_args(5, argv, &config) == 0);
+    assert(config.read_path_enabled == true);
+    assert(strcmp(config.read_path, "input.pcap") == 0);
+    assert(config.write_path_enabled == true);
+    assert(strcmp(config.write_path, "filtered.pcap") == 0);
 }
 
 static void test_cli_parse_args_sets_stats(void) {
@@ -496,6 +510,8 @@ static void test_cli_parse_args_rejects_all_missing_values(void) {
     char *port[] = {"MiniSniffer", "--port"};
     char *host[] = {"MiniSniffer", "--host"};
     char *log[] = {"MiniSniffer", "--log"};
+    char *read_path[] = {"MiniSniffer", "--read"};
+    char *write_path[] = {"MiniSniffer", "--write"};
     char *payload_bytes[] = {"MiniSniffer", "--payload-bytes"};
     char *payload_text[] = {"MiniSniffer", "--payload-contains"};
     char *payload_hex[] = {"MiniSniffer", "--payload-hex"};
@@ -516,6 +532,8 @@ static void test_cli_parse_args_rejects_all_missing_values(void) {
     assert_cli_rejects(2, port);
     assert_cli_rejects(2, host);
     assert_cli_rejects(2, log);
+    assert_cli_rejects(2, read_path);
+    assert_cli_rejects(2, write_path);
     assert_cli_rejects(2, payload_bytes);
     assert_cli_rejects(2, payload_text);
     assert_cli_rejects(2, payload_hex);
@@ -536,6 +554,8 @@ static void test_cli_parse_args_rejects_oversized_strings(void) {
     char long_value[300];
     char *interface[] = {"MiniSniffer", "--interface", long_value};
     char *log[] = {"MiniSniffer", "--log", long_value};
+    char *read_path[] = {"MiniSniffer", "--read", long_value};
+    char *write_path[] = {"MiniSniffer", "--write", long_value};
     char *payload_text[] = {"MiniSniffer", "--payload-contains", long_value};
     char *http_host[] = {"MiniSniffer", "--decode-app", "--http-host", long_value};
     char *http_method[] = {"MiniSniffer", "--decode-app", "--http-method", long_value};
@@ -547,6 +567,8 @@ static void test_cli_parse_args_rejects_oversized_strings(void) {
     long_value[sizeof(long_value) - 1] = '\0';
     assert_cli_rejects(3, interface);
     assert_cli_rejects(3, log);
+    assert_cli_rejects(3, read_path);
+    assert_cli_rejects(3, write_path);
     assert_cli_rejects(3, payload_text);
     assert_cli_rejects(4, http_host);
     assert_cli_rejects(4, http_method);
@@ -652,6 +674,7 @@ int main(void) {
     test_cli_parse_args_sets_port();
     test_cli_parse_args_sets_host();
     test_cli_parse_args_sets_log();
+    test_cli_parse_args_sets_offline_pcap_paths();
     test_cli_parse_args_sets_stats();
     test_cli_parse_args_sets_payload_display();
     test_cli_parse_args_sets_payload_text_filter();

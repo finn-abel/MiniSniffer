@@ -24,8 +24,12 @@ static void print_startup_summary(const AppConfig *config) {
     }
 
     printf("MiniSniffer starting...\n");
-    printf("Interface: %s\n",
-           config->interface_name[0] == '\0' ? "default" : config->interface_name);
+    if (config->read_path_enabled) {
+        printf("Input pcap: %s\n", config->read_path);
+    } else {
+        printf("Interface: %s\n",
+               config->interface_name[0] == '\0' ? "default" : config->interface_name);
+    }
     if (config->max_packets == 0) {
         printf("Max packets: unlimited\n");
     } else {

@@ -118,6 +118,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
        [--protocol <tcp|udp|icmp|other>] [--port <number>]
        [--host <ipv4>] [--payload] [--payload-bytes <number>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
+       [--read <file.pcap>] [--write <file.pcap>]
        [--json] [--flush-log <always|line|exit>]
        [--decode-app] [--reassemble] [--max-flows <number>]
        [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]
@@ -145,6 +146,8 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--payload-bytes <number>` | Set the payload preview length. Default is 256 bytes. Maximum is 256 bytes. |
 | `--payload-contains <text>` | Display only packets whose bounded payload decode window contains the literal text. |
 | `--payload-hex <hex>` | Display only packets whose bounded payload decode window contains the byte pattern. |
+| `--read <file.pcap>` | Read packets from an offline pcap file instead of live capture. Does not require interface selection or capture permissions. |
+| `--write <file.pcap>` | Write displayed packets to a new pcap file, preserving timestamps and link type. Existing files are refused. |
 | `--json` | Print displayed packets as JSON Lines instead of human-readable packet text. |
 | `--decode-app` | Decode packet-local HTTP, DNS, and TLS ClientHello metadata. |
 | `--reassemble` | Enable bounded TCP stream reassembly for app decoding. Requires `--decode-app`. |
@@ -305,6 +308,29 @@ packet-local or flow-derived source as text and CSV output.
 
 In JSON mode, startup, stop, flow-event, and stats text are suppressed on
 stdout so consumers can parse stdout as JSON Lines. Errors still go to stderr.
+
+## Offline Pcap
+
+Use `--read <file.pcap>` to process an existing capture through the same
+parser, filters, output, stats, JSON, and CSV logging pipeline as live capture:
+
+```sh
+./MiniSniffer --read capture.pcap --protocol tcp --count 10 --stats
+```
+
+Offline reads do not select or open a live interface, so they do not require
+`sudo` or packet capture permissions.
+
+Use `--write <file.pcap>` to save only displayed packets to a new pcap file:
+
+```sh
+./MiniSniffer --read capture.pcap --protocol tcp --write tcp-only.pcap
+sudo ./MiniSniffer --interface en0 --count 100 --write sample.pcap
+```
+
+The output pcap path must not already exist. MiniSniffer creates it exclusively
+with owner-only permissions and writes packets after filtering, preserving the
+source packet timestamps and libpcap link type.
 
 ## Application Decoding Limits
 

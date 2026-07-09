@@ -1,8 +1,11 @@
 #include <pcap/pcap.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 #include "app_decoder.h"
 #include "capture.h"
@@ -44,6 +47,61 @@ static void print_open_live_error(const char *device, const char *error_message)
         strstr(error_message, "permission") != NULL ||
         strstr(error_message, "Operation not permitted") != NULL) {
         fprintf(stderr, "Error: packet capture may require sudo or capture permissions.\n");
+    }
+}
+
+static pcap_t *open_offline_capture(const char *path, char *error_buffer) {
+    pcap_t *handle;
+
+    handle = pcap_open_offline(path, error_buffer);
+    if (handle == NULL) {
+        fprintf(stderr, "Error: cannot read pcap file '%s': %s\n", path, error_buffer);
+    }
+
+    return handle;
+}
+
+static int open_pcap_writer(pcap_t *handle, const char *path, pcap_dumper_t **writer) {
+    int fd;
+    FILE *file;
+
+    if (handle == NULL || path == NULL || path[0] == '\0' || writer == NULL) {
+        return 1;
+    }
+
+    fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) {
+        fprintf(stderr, "Error: cannot create pcap output file '%s': %s\n", path, strerror(errno));
+        return 1;
+    }
+
+    file = fdopen(fd, "wb");
+    if (file == NULL) {
+        int saved_errno = errno;
+
+        close(fd);
+        unlink(path);
+        fprintf(stderr, "Error: cannot initialize pcap output file '%s': %s\n", path,
+                strerror(saved_errno));
+        return 1;
+    }
+
+    *writer = pcap_dump_fopen(handle, file);
+    if (*writer == NULL) {
+        fprintf(stderr, "Error: cannot initialize pcap output file '%s': %s\n", path,
+                pcap_geterr(handle));
+        fclose(file);
+        unlink(path);
+        return 1;
+    }
+
+    return 0;
+}
+
+static void close_pcap_writer(pcap_dumper_t **writer) {
+    if (writer != NULL && *writer != NULL) {
+        pcap_dump_close(*writer);
+        *writer = NULL;
     }
 }
 
@@ -327,6 +385,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     char default_device[CAPTURE_DEVICE_NAME_LEN];
     const char *device;
     pcap_t *handle;
+    pcap_dumper_t *pcap_writer = NULL;
     FlowTable flow_table = {0};
     bool flow_table_ready = false;
     uint32_t captured_packets = 0;
@@ -341,37 +400,49 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         return 1;
     }
 
-    /*
-     * Empty interface means choose a practical default capture device.
-     * Otherwise, use the exact interface name parsed from the CLI.
-     */
-    if (config->interface_name[0] == '\0') {
-        if (choose_default_device(default_device, sizeof(default_device), error_buffer) != 0) {
-            fprintf(stderr, "Error: no default capture device found: %s\n", error_buffer);
+    if (config->read_path_enabled) {
+        device = config->read_path;
+        handle = open_offline_capture(config->read_path, error_buffer);
+        if (handle == NULL) {
             return 1;
         }
-        device = default_device;
     } else {
-        device = config->interface_name;
-        if (!interface_exists(device, error_buffer)) {
-            fprintf(stderr, "Error: interface '%s' was not found.\n", device);
+        /*
+         * Empty interface means choose a practical default capture device.
+         * Otherwise, use the exact interface name parsed from the CLI.
+         */
+        if (config->interface_name[0] == '\0') {
+            if (choose_default_device(default_device, sizeof(default_device), error_buffer) != 0) {
+                fprintf(stderr, "Error: no default capture device found: %s\n", error_buffer);
+                return 1;
+            }
+            device = default_device;
+        } else {
+            device = config->interface_name;
+            if (!interface_exists(device, error_buffer)) {
+                fprintf(stderr, "Error: interface '%s' was not found.\n", device);
+                return 1;
+            }
+        }
+
+        if (!config->quiet && !config->json_output) {
+            printf("Starting capture on interface: %s\n", device);
+        }
+
+        /*
+         * Open a live capture handle with conservative local-capture settings:
+         * full snap length, non-promiscuous mode, and a one-second timeout.
+         */
+        handle = pcap_open_live(device, CAPTURE_SNAPLEN, CAPTURE_PROMISCUOUS, CAPTURE_TIMEOUT_MS,
+                                error_buffer);
+        if (handle == NULL) {
+            print_open_live_error(device, error_buffer);
             return 1;
         }
     }
 
-    if (!config->quiet && !config->json_output) {
-        printf("Starting capture on interface: %s\n", device);
-    }
-
-    /*
-     * Open a live capture handle with conservative local-capture settings:
-     * full snap length, non-promiscuous mode, and a one-second timeout.
-     */
-    handle = pcap_open_live(device, CAPTURE_SNAPLEN, CAPTURE_PROMISCUOUS, CAPTURE_TIMEOUT_MS,
-                            error_buffer);
-    if (handle == NULL) {
-        print_open_live_error(device, error_buffer);
-        return 1;
+    if (config->read_path_enabled && !config->quiet && !config->json_output) {
+        printf("Reading packets from pcap file: %s\n", device);
     }
 
     if (pcap_datalink(handle) != DLT_EN10MB) {
@@ -382,10 +453,17 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         return 1;
     }
 
+    if (config->write_path_enabled &&
+        open_pcap_writer(handle, config->write_path, &pcap_writer) != 0) {
+        pcap_close(handle);
+        return 1;
+    }
+
     if (config->reassemble) {
         if (!flow_table_init(&flow_table, config->max_flows, config->stream_buffer_bytes,
                              config->flow_timeout_seconds)) {
             fprintf(stderr, "Error: failed to initialize flow table.\n");
+            close_pcap_writer(&pcap_writer);
             pcap_close(handle);
             return 1;
         }
@@ -396,6 +474,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     if (config->logging_enabled != 0 &&
         csv_logger_open(config->log_path, config->decode_app, config->payload_display_enabled != 0,
                         config->payload_preview_bytes, config->log_flush_mode) != 0) {
+        close_pcap_writer(&pcap_writer);
         flow_table_cleanup(&flow_table);
         pcap_close(handle);
         return 1;
@@ -427,6 +506,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         if (result == -1) {
             fprintf(stderr, "Error: packet capture failed: %s\n", pcap_geterr(handle));
             (void)csv_logger_close();
+            close_pcap_writer(&pcap_writer);
             flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
@@ -438,6 +518,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         if (parser_parse_packet(packet, header->caplen, &info) != 0) {
             fprintf(stderr, "Packet parsing failed.\n");
             (void)csv_logger_close();
+            close_pcap_writer(&pcap_writer);
             flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
@@ -513,9 +594,13 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         if (csv_logger_write_packet(&info, packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
                                     app_source) != 0) {
             (void)csv_logger_close();
+            close_pcap_writer(&pcap_writer);
             flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
+        }
+        if (pcap_writer != NULL) {
+            pcap_dump((u_char *)pcap_writer, header, packet);
         }
         stats_update(stats, &info);
     }
@@ -525,6 +610,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     }
 
     flow_table_cleanup(&flow_table);
+    close_pcap_writer(&pcap_writer);
     pcap_close(handle);
     return csv_logger_close();
 }
