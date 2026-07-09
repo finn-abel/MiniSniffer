@@ -59,8 +59,7 @@ static void test_app_dhcp_decode_request_with_requested_ip(void) {
     size_t length;
     AppInfo info;
 
-    length =
-        build_dhcp_message(buffer, sizeof(buffer), 1, 1, 6, 1, NULL, options, sizeof(options));
+    length = build_dhcp_message(buffer, sizeof(buffer), 1, 1, 6, 1, NULL, options, sizeof(options));
 
     assert(app_dhcp_decode_udp(buffer, length, &info) == APP_DECODE_OK);
     assert(info.dhcp_message_type == 3);
@@ -73,8 +72,7 @@ static void test_app_dhcp_decode_ack_reports_offered_addresses(void) {
     size_t length;
     AppInfo info;
 
-    length = build_dhcp_message(buffer, sizeof(buffer), 2, 1, 6, 1, NULL, options,
-                                sizeof(options));
+    length = build_dhcp_message(buffer, sizeof(buffer), 2, 1, 6, 1, NULL, options, sizeof(options));
     buffer[16] = 192;
     buffer[17] = 168;
     buffer[18] = 1;
@@ -96,8 +94,7 @@ static void test_app_dhcp_ignores_unknown_options_and_padding(void) {
     size_t length;
     AppInfo info;
 
-    length =
-        build_dhcp_message(buffer, sizeof(buffer), 1, 1, 6, 1, NULL, options, sizeof(options));
+    length = build_dhcp_message(buffer, sizeof(buffer), 1, 1, 6, 1, NULL, options, sizeof(options));
 
     assert(app_dhcp_decode_udp(buffer, length, &info) == APP_DECODE_OK);
     assert(info.dhcp_message_type == 1);
@@ -109,8 +106,7 @@ static void test_app_dhcp_stops_scan_on_truncated_trailing_option(void) {
     size_t length;
     AppInfo info;
 
-    length =
-        build_dhcp_message(buffer, sizeof(buffer), 1, 1, 6, 1, NULL, options, sizeof(options));
+    length = build_dhcp_message(buffer, sizeof(buffer), 1, 1, 6, 1, NULL, options, sizeof(options));
 
     assert(app_dhcp_decode_udp(buffer, length, &info) == APP_DECODE_OK);
     assert(info.dhcp_message_type == 1);
@@ -133,8 +129,7 @@ static void test_app_dhcp_rejects_invalid_op(void) {
     size_t length;
     AppInfo info;
 
-    length =
-        build_dhcp_message(buffer, sizeof(buffer), 9, 1, 6, 1, NULL, options, sizeof(options));
+    length = build_dhcp_message(buffer, sizeof(buffer), 9, 1, 6, 1, NULL, options, sizeof(options));
 
     assert(app_dhcp_decode_udp(buffer, length, &info) == APP_DECODE_NO_MATCH);
     assert(info.protocol == APP_PROTO_UNKNOWN);
@@ -163,8 +158,7 @@ static void test_app_dhcp_skips_client_mac_for_non_ethernet_hardware(void) {
     size_t length;
     AppInfo info;
 
-    length =
-        build_dhcp_message(buffer, sizeof(buffer), 1, 6, 8, 1, NULL, options, sizeof(options));
+    length = build_dhcp_message(buffer, sizeof(buffer), 1, 6, 8, 1, NULL, options, sizeof(options));
 
     assert(app_dhcp_decode_udp(buffer, length, &info) == APP_DECODE_OK);
     assert(info.dhcp_client_mac[0] == '\0');

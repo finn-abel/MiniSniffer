@@ -1,0 +1,68 @@
+#compdef MiniSniffer
+# Zsh completion for MiniSniffer.
+#
+# Install manually: copy (or symlink) this file into a directory on your
+# $fpath, keeping the leading-underscore filename, e.g.:
+#   cp completions/_minisniffer ~/.zsh/completions/_minisniffer
+#   fpath=(~/.zsh/completions $fpath)
+#   autoload -U compinit && compinit
+#
+# `make install` installs this automatically under
+# $(PREFIX)/share/zsh/site-functions/_minisniffer.
+
+_minisniffer_interfaces() {
+    local -a interfaces
+    interfaces=(${(f)"$(ifconfig -l 2>/dev/null | tr ' ' '\n')"})
+    if [[ ${#interfaces[@]} -eq 0 ]]; then
+        interfaces=(${(f)"$(command ls /sys/class/net 2>/dev/null)"})
+    fi
+    compadd -a interfaces
+}
+
+_minisniffer() {
+    local -a args
+    args=(
+        '--help[Print usage and exit]'
+        '--version[Print the MiniSniffer version and exit]'
+        '--list-interfaces[List libpcap capture devices]'
+        '--interface[Capture from a specific interface]:interface:_minisniffer_interfaces'
+        '--count[Stop after this many displayed packets]:number:'
+        '--quiet[Suppress startup and stop summaries]'
+        '--verbose[Print the full startup configuration summary]'
+        '--no-color[Disable terminal color output]'
+        '--protocol[Display only packets matching the protocol]:protocol:(tcp udp icmp arp other)'
+        '--port[Display only packets matching this port]:port:'
+        '--host[Display only packets matching this IPv4 or IPv6 host]:host:'
+        '--payload[Print a bounded payload preview]'
+        '--payload-bytes[Set the payload preview length]:bytes:'
+        '--payload-decode-bytes[Set the payload decode window]:bytes:'
+        '--domain-match[Set domain matching mode]:mode:(normalized exact idna)'
+        '--payload-contains[Filter on literal payload text]:text:'
+        '--payload-hex[Filter on hex payload pattern]:hex:'
+        '--log[Write displayed packets to a CSV file]:file:_files'
+        '--read[Read packets from an offline pcap file]:file:_files -g "*.pcap"'
+        '--write[Write displayed packets to a new pcap file]:file:_files -g "*.pcap"'
+        '--no-bpf[Disable kernel-level BPF pre-filtering]'
+        '--json[Print displayed packets as JSON Lines]'
+        '--flush-log[Control CSV flush timing]:mode:(always line exit)'
+        '--decode-app[Decode packet-local HTTP, DNS, and TLS ClientHello metadata]'
+        '--reassemble[Enable bounded TCP stream reassembly]'
+        '--max-flows[Set the maximum number of tracked TCP flows]:number:'
+        '--stream-buffer-bytes[Set the per-direction TCP stream buffer cap]:bytes:'
+        '--flow-timeout[Evict flows idle for at least this many seconds]:seconds:'
+        '--app[Display only packets with decoded app metadata for this protocol]:protocol:(http dns tls dhcp mdns quic)'
+        '--http-host[Filter on decoded HTTP Host header]:host:'
+        '--http-method[Filter on decoded HTTP method]:method:(GET POST PUT DELETE HEAD OPTIONS PATCH TRACE CONNECT)'
+        '--dns-query[Filter on decoded DNS/mDNS query name]:name:'
+        '--dns-type[Filter on decoded DNS/mDNS query type]:type:(A NS CNAME AAAA)'
+        '--tls-sni[Filter on decoded TLS SNI hostname]:host:'
+        '--tls-alpn[Filter on decoded TLS ALPN protocol]:protocol:'
+        '--dhcp-type[Filter on decoded DHCP message type]:type:(discover offer request decline ack nak release inform)'
+        '--quic-version[Filter on decoded QUIC Initial version]:version:'
+        '--stats[Print summary statistics after capture completes]'
+    )
+
+    _arguments -s $args
+}
+
+_minisniffer "$@"

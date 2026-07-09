@@ -146,10 +146,8 @@ static void test_ipv4_frag_expires_idle_datagrams(void) {
     make_fragment(&first, 13, "10.0.0.1", "10.0.0.2", 0, 1, payload, 16);
     make_fragment(&second, 14, "10.0.0.3", "10.0.0.4", 0, 1, payload, 16);
 
-    assert(ipv4_fragment_table_process(&table, &first, 1, &stats).result ==
-           IPV4_FRAGMENT_QUEUED);
-    assert(ipv4_fragment_table_process(&table, &second, 7, &stats).result ==
-           IPV4_FRAGMENT_QUEUED);
+    assert(ipv4_fragment_table_process(&table, &first, 1, &stats).result == IPV4_FRAGMENT_QUEUED);
+    assert(ipv4_fragment_table_process(&table, &second, 7, &stats).result == IPV4_FRAGMENT_QUEUED);
     assert(stats.ipv4_fragments_expired == 1);
     assert(table.count == 1);
     ipv4_fragment_table_cleanup(&table);
@@ -187,17 +185,14 @@ static void test_ipv4_frag_drops_when_caps_are_exhausted(void) {
     make_fragment(&first, 16, "10.0.0.1", "10.0.0.2", 0, 1, payload, 16);
     make_fragment(&second, 17, "10.0.0.3", "10.0.0.4", 0, 1, payload, 16);
 
-    assert(ipv4_fragment_table_process(&table, &first, 1, &stats).result ==
-           IPV4_FRAGMENT_QUEUED);
-    assert(ipv4_fragment_table_process(&table, &second, 2, &stats).result ==
-           IPV4_FRAGMENT_DROPPED);
+    assert(ipv4_fragment_table_process(&table, &first, 1, &stats).result == IPV4_FRAGMENT_QUEUED);
+    assert(ipv4_fragment_table_process(&table, &second, 2, &stats).result == IPV4_FRAGMENT_DROPPED);
     assert(stats.ipv4_fragments_dropped == 1);
     ipv4_fragment_table_cleanup(&table);
 
     stats_init(&stats);
     assert(ipv4_fragment_table_init(&table, 4, 8, 30));
-    assert(ipv4_fragment_table_process(&table, &first, 1, &stats).result ==
-           IPV4_FRAGMENT_DROPPED);
+    assert(ipv4_fragment_table_process(&table, &first, 1, &stats).result == IPV4_FRAGMENT_DROPPED);
     assert(stats.ipv4_fragments_dropped == 1);
     ipv4_fragment_table_cleanup(&table);
 }
@@ -212,15 +207,14 @@ static void test_ipv4_frag_rejects_invalid_init_and_inputs(void) {
     assert(!ipv4_fragment_table_init(NULL, 1, 1024, 30));
     assert(!ipv4_fragment_table_init(&table, 0, 1024, 30));
     assert(!ipv4_fragment_table_init(&table, 1, 0, 30));
-    assert(!ipv4_fragment_table_init(&table, MINISNIFFER_MAX_IPV4_FRAGMENT_DATAGRAMS + 1, 1024,
-                                     30));
+    assert(
+        !ipv4_fragment_table_init(&table, MINISNIFFER_MAX_IPV4_FRAGMENT_DATAGRAMS + 1, 1024, 30));
     assert(!ipv4_fragment_table_init(&table, 1, MINISNIFFER_MAX_IPV4_FRAGMENT_BYTES + 1, 30));
 
     assert(ipv4_fragment_table_process(NULL, &packet, 1, &stats).result == IPV4_FRAGMENT_IGNORED);
     assert(ipv4_fragment_table_init(&table, 1, 1024, 0));
     assert(ipv4_fragment_table_process(&table, NULL, 1, &stats).result == IPV4_FRAGMENT_IGNORED);
-    assert(ipv4_fragment_table_process(&table, &packet, 1, &stats).result ==
-           IPV4_FRAGMENT_IGNORED);
+    assert(ipv4_fragment_table_process(&table, &packet, 1, &stats).result == IPV4_FRAGMENT_IGNORED);
     ipv4_fragment_table_expire(NULL, 1, &stats);
     ipv4_fragment_table_cleanup(NULL);
     ipv4_fragment_table_cleanup(&table);

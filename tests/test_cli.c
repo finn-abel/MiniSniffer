@@ -230,8 +230,8 @@ static void test_cli_parse_args_sets_stats(void) {
 
 static void test_cli_parse_args_sets_payload_display(void) {
     AppConfig config;
-    char *argv[] = {"MiniSniffer", "--payload", "--payload-bytes", "32",
-                    "--payload-decode-bytes", "4096"};
+    char *argv[] = {"MiniSniffer", "--payload", "--payload-bytes", "32", "--payload-decode-bytes",
+                    "4096"};
 
     config_init_defaults(&config);
 

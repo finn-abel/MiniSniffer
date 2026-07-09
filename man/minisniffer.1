@@ -1,0 +1,240 @@
+.TH MINISNIFFER 1 "2026-07-09" "MiniSniffer 0.2.0" "User Commands"
+.SH NAME
+MiniSniffer \- small C packet sniffer and network analyzer built on libpcap
+.SH SYNOPSIS
+.B MiniSniffer
+[\fIOPTION\fR]...
+.SH DESCRIPTION
+.B MiniSniffer
+captures live packets or reads an offline pcap file, parses common IPv4/IPv6
+link-layer formats, applies protocol/port/host/payload/application filters,
+prints readable packet summaries or JSON Lines, optionally writes CSV logs or
+a new pcap file, and can report capture statistics when the run completes.
+.PP
+MiniSniffer is for learning, local diagnostics, and authorized network
+observation. It does not decrypt encrypted traffic, inject or modify packets,
+or attempt to evade detection.
+.PP
+Live packet capture usually requires elevated operating-system permissions
+(commonly running as root, e.g. with
+.BR sudo ).
+Reading with
+.B \-\-read
+does not require elevated permissions.
+.SH OPTIONS
+.TP
+.B \-\-help
+Print usage and exit.
+.TP
+.B \-\-version
+Print the MiniSniffer version and exit.
+.TP
+.B \-\-list-interfaces
+List libpcap capture devices with descriptions, address hints, and
+default-candidate markers.
+.TP
+.BI \-\-interface " name"
+Capture from a specific interface, such as
+.IR en0 .
+.TP
+.BI \-\-count " number"
+Stop after this many displayed packets. If omitted, capture continues until
+Ctrl+C.
+.TP
+.B \-\-quiet
+Suppress startup and stop summaries. Packet output and errors still print.
+.TP
+.B \-\-verbose
+Print the full startup configuration summary before capture.
+.TP
+.B \-\-no-color
+Disable terminal color output. Current MiniSniffer output is plain text.
+.TP
+.BI \-\-protocol " tcp|udp|icmp|arp|other"
+Display only packets matching the selected protocol.
+.TP
+.BI \-\-port " number"
+Display only TCP/UDP packets where the source or destination port matches.
+.TP
+.BI \-\-host " ip"
+Display only packets where the source or destination IPv4 or IPv6 address
+matches.
+.TP
+.B \-\-payload
+Print a bounded hex and ASCII payload preview for displayed packets.
+.TP
+.BI \-\-payload-bytes " number"
+Set the payload preview length. Default is 256 bytes. Maximum is 256 bytes.
+.TP
+.BI \-\-payload-decode-bytes " number"
+Set the payload decode window used by payload filters and packet-local app
+decoders. Default is 2048 bytes. Maximum is 65535 bytes.
+.TP
+.BI \-\-payload-contains " text"
+Display only packets whose bounded payload decode window contains the literal
+text.
+.TP
+.BI \-\-payload-hex " hex"
+Display only packets whose bounded payload decode window contains the byte
+pattern. Hex patterns may include spaces, colons, or hyphens as separators.
+.TP
+.BI \-\-log " file"
+Write displayed packets to a CSV file. The path must not already exist.
+.TP
+.BI \-\-read " file.pcap"
+Read packets from an offline pcap file instead of live capture. Does not
+require interface selection or capture permissions.
+.TP
+.BI \-\-write " file.pcap"
+Write displayed packets to a new pcap file, preserving timestamps and link
+type. Existing files are refused.
+.TP
+.B \-\-no-bpf
+Disable kernel-level BPF pre-filtering and rely entirely on software
+filtering. Useful for debugging filter behavior.
+.TP
+.B \-\-json
+Print displayed packets as JSON Lines instead of human-readable packet text.
+.TP
+.BI \-\-flush-log " always|line|exit"
+Control CSV flush timing. Default is
+.IR line ,
+preserving row-by-row safe behavior.
+.TP
+.B \-\-decode-app
+Decode packet-local HTTP, DNS, TLS ClientHello, DHCP, mDNS, and conservative
+QUIC Initial-packet metadata.
+.TP
+.B \-\-reassemble
+Enable bounded TCP stream reassembly for app decoding. Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-max-flows " number"
+Set the maximum number of tracked TCP flows for reassembly. Default is 512;
+maximum is 1024. Requires
+.BR \-\-reassemble .
+.TP
+.BI \-\-stream-buffer-bytes " number"
+Set the per-direction TCP stream buffer cap. Default is 32768 bytes; maximum
+is 1048576 bytes. Requires
+.BR \-\-reassemble .
+.TP
+.BI \-\-flow-timeout " seconds"
+Evict flows idle for at least this many seconds. Default is 60 seconds.
+Requires
+.BR \-\-reassemble .
+.TP
+.BI \-\-app " http|dns|tls|dhcp|mdns|quic"
+Display only packets with decoded app metadata for the selected protocol.
+Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-http-host " host"
+Display only decoded HTTP packets with a matching Host header. Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-http-method " method"
+Display only decoded HTTP requests with a matching method. Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-dns-query " name"
+Display only decoded DNS or mDNS packets with a matching first query name.
+Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-dns-type " type"
+Display only decoded DNS or mDNS packets with a matching first query type,
+such as
+.I A
+or
+.IR AAAA .
+Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-tls-sni " host"
+Display only decoded TLS ClientHello packets with a matching SNI hostname.
+Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-tls-alpn " protocol"
+Display only decoded TLS ClientHello packets advertising the ALPN protocol.
+Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-dhcp-type " type"
+Display only decoded DHCP packets with a matching message type, such as
+.IR discover ", " offer ", " request ", or " ack .
+Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-quic-version " version"
+Display only decoded QUIC Initial packets with a matching version, decimal or
+0x-prefixed hex. Requires
+.BR \-\-decode-app .
+.TP
+.BI \-\-domain-match " normalized|exact|idna"
+Set HTTP Host, DNS query, and TLS SNI domain matching mode. Default is
+.IR normalized .
+.I idna
+requires a build made with
+.BR WITH_LIBIDN2=1 .
+.TP
+.B \-\-stats
+Print displayed packet totals after capture completes.
+.SH EXAMPLES
+Capture five displayed packets on the automatically selected interface:
+.PP
+.RS
+.EX
+sudo MiniSniffer \-\-count 5
+.EE
+.RE
+.PP
+Capture TCP packets and print stats at the end:
+.PP
+.RS
+.EX
+sudo MiniSniffer \-\-protocol tcp \-\-count 20 \-\-stats
+.EE
+.RE
+.PP
+Read an existing capture file, no elevated permissions required:
+.PP
+.RS
+.EX
+MiniSniffer \-\-read capture.pcap \-\-protocol tcp \-\-count 10 \-\-stats
+.EE
+.RE
+.PP
+Decode and filter HTTP requests by Host header:
+.PP
+.RS
+.EX
+sudo MiniSniffer \-\-decode-app \-\-app http \-\-http-host example.com
+.EE
+.RE
+.SH FILES
+CSV logs written with
+.B \-\-log
+are created atomically with owner-only permissions (0600); existing files and
+symbolic links are refused.
+.PP
+Pcap files written with
+.B \-\-write
+must not already exist; MiniSniffer creates them exclusively.
+.SH EXIT STATUS
+.B MiniSniffer
+exits with a non-zero status on invalid arguments, interface errors, or
+capture failures.
+.SH SEE ALSO
+.BR tcpdump (1),
+.BR pcap (3)
+.PP
+Full documentation, including the TCP reassembly model, BPF pre-filtering
+scope, and CSV/JSON schemas:
+.br
+https://github.com/finn-abel/PacketScope
+.SH BUGS
+Report issues at the project's GitHub issue tracker.
+.SH AUTHOR
+MiniSniffer contributors.

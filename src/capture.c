@@ -122,8 +122,8 @@ static bool append_bpf_clause(char *expression, size_t expression_size, const ch
     if (current_length == 0) {
         written = snprintf(expression, expression_size, "%s", clause);
     } else {
-        written = snprintf(expression + current_length, expression_size - current_length,
-                           " and %s", clause);
+        written = snprintf(expression + current_length, expression_size - current_length, " and %s",
+                           clause);
     }
 
     return written >= 0 && (size_t)written < expression_size - current_length;
@@ -463,8 +463,8 @@ static void set_packet_timestamp(PacketInfo *info, const struct pcap_pkthdr *hea
              (long)header->ts.tv_usec);
 }
 
-static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction, const PacketInfo *packet,
-                                   AppDecodeStatus *status) {
+static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction,
+                                   const PacketInfo *packet, AppDecodeStatus *status) {
     TcpReassemblyDirection *tcp_state;
     TcpReassemblyResult reassembly_result;
     const uint8_t *stream_data;
@@ -513,8 +513,8 @@ static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction, cons
     stream_data = stream_buffer_data(&tcp_state->stream);
     stream_length = stream_buffer_length(&tcp_state->stream);
     {
-        AppDecodeResult decode_result = app_decode_stream(packet, stream_data, stream_length,
-                                                          &decoded);
+        AppDecodeResult decode_result =
+            app_decode_stream(packet, stream_data, stream_length, &decoded);
         if (status != NULL) {
             *status = app_decode_status_from_result(decode_result, packet, &decoded);
         }
@@ -716,8 +716,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         memset(&assembled_info, 0, sizeof(assembled_info));
         memset(&fragment_result, 0, sizeof(fragment_result));
         if (fragment_table_ready && info.is_ipv4_fragment != 0) {
-            fragment_result = ipv4_fragment_table_process(&fragment_table, &info, packet_time,
-                                                          stats);
+            fragment_result =
+                ipv4_fragment_table_process(&fragment_table, &info, packet_time, stats);
             if (fragment_result.result == IPV4_FRAGMENT_REASSEMBLED) {
                 assembled_packet = fragment_result.packet;
                 if (parser_parse_packet_with_datalink(assembled_packet,
@@ -726,9 +726,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                     free(assembled_packet);
                     stats_record_parse_failure(stats);
                     if (!config->quiet) {
-                        fprintf(stderr,
-                                "Warning: failed to parse a reassembled IPv4 datagram; "
-                                "skipping.\n");
+                        fprintf(stderr, "Warning: failed to parse a reassembled IPv4 datagram; "
+                                        "skipping.\n");
                     }
                     continue;
                 }
@@ -768,8 +767,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         }
 
         if (config->decode_app) {
-            AppDecodeResult decode_result =
-                app_decode_packet(effective_info, &effective_info->app);
+            AppDecodeResult decode_result = app_decode_packet(effective_info, &effective_info->app);
 
             effective_info->app_decode_status =
                 app_decode_status_from_result(decode_result, effective_info, &effective_info->app);

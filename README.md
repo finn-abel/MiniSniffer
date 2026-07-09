@@ -9,7 +9,6 @@ writes CSV logs, and can report capture statistics when the run completes.
 
 - [Architecture](docs/architecture.md)
 - [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
 - [License](LICENSE)
 
 ## Features
@@ -61,11 +60,32 @@ modify or inject packets.
 On macOS with Homebrew:
 
 ```sh
-brew install libpcap
+brew install libpcap pkg-config
+```
+
+On Debian or Ubuntu:
+
+```sh
+sudo apt-get install build-essential libpcap-dev pkg-config
+```
+
+On Fedora or RHEL:
+
+```sh
+sudo dnf install gcc make libpcap-devel pkgconf-pkg-config
+```
+
+On Arch Linux:
+
+```sh
+sudo pacman -S base-devel libpcap pkgconf
 ```
 
 Packet capture usually requires elevated permissions. On macOS, run MiniSniffer
-with `sudo` or configure BPF capture permissions for your account.
+with `sudo` or configure BPF capture permissions for your account. On Linux,
+run with `sudo` or grant the binary the `cap_net_raw`/`cap_net_admin`
+capabilities instead of running as root, for example
+`sudo setcap cap_net_raw,cap_net_admin+eip ./MiniSniffer`.
 
 ## Build
 
@@ -96,7 +116,36 @@ make uninstall
 ```
 
 Both targets honor `PREFIX`, which defaults to `/usr/local`, and `DESTDIR` for
-staged installs.
+staged installs. `make install` also installs the man page and bash/zsh/fish
+completions (see [Man Page](#man-page) and [Shell Completions](#shell-completions)
+below); each has its own directory variable
+(`MANDIR`, `BASH_COMPLETION_DIR`, `ZSH_COMPLETION_DIR`, `FISH_COMPLETION_DIR`)
+that can be overridden independently of `PREFIX` if your system expects a
+different layout. `make uninstall` removes exactly the files `make install`
+placed.
+
+### Homebrew (macOS, build from source)
+
+A Homebrew formula is kept in-tree at `packaging/homebrew/minisniffer.rb` for
+future tap use; it is not yet published to homebrew-core or a hosted tap.
+Install directly from the formula file in a local checkout:
+
+```sh
+brew install --build-from-source ./packaging/homebrew/minisniffer.rb
+```
+
+Or build from the repository's current default branch instead of a tagged
+release:
+
+```sh
+brew install --HEAD ./packaging/homebrew/minisniffer.rb
+```
+
+The formula's stable `url`/`sha256` fields are placeholders until the first
+tagged release is published through the [release workflow](#continuous-integration);
+`--HEAD` works immediately since it builds directly from this git repository.
+The formula installs the `MiniSniffer` binary, the man page, and all three
+shell completions in one step.
 
 ## Quick Start
 
@@ -398,12 +447,20 @@ sudo ./MiniSniffer --json --decode-app --payload --count 5
 
 Each displayed packet is one JSON object with `timestamp`, `packet_number`,
 `transport`, `packet_length`, optional `payload`, `app`, `app_decode_status`,
-and `app_source`. Payload previews include bounded `length`, `preview_length`,
-`truncated`, `hex`, and `ascii` fields when `--payload` is enabled. App metadata
-follows the same packet-local or flow-derived source as text and CSV output.
-ARP packets include an additional `arp` object with `operation`, `sender_mac`,
-`sender_ip`, `target_mac`, and `target_ip` fields; this field is absent for
-non-ARP packets.
+and `app_source`. `transport` is itself an object with `protocol`, and
+`src_ip`/`dst_ip` when addresses are available; `src_port`/`dst_port` are
+present only for TCP/UDP packets, and `icmp_type`/`icmp_code` only for
+ICMP/ICMPv6 packets. Payload previews include bounded `length`,
+`preview_length`, `truncated`, `hex`, and `ascii` fields when `--payload` is
+enabled and the packet has payload; `app` is `null` when no app metadata was
+decoded. App metadata follows the same packet-local or flow-derived source as
+text and CSV output. ARP packets include an additional `arp` object with
+`operation`, `sender_mac`, `sender_ip`, `target_mac`, and `target_ip` fields;
+this field is absent for non-ARP packets.
+
+```json
+{"timestamp":"1710000000.000000","packet_number":1,"transport":{"protocol":"tcp","src_ip":"10.0.0.1","src_port":51432,"dst_ip":"10.0.0.2","dst_port":80},"packet_length":72,"payload":{"length":18,"preview_length":18,"truncated":false,"hex":"47 45 54 20 2f 20 48 54 54 50 2f 31 2e 31 0d 0a 0d 0a","ascii":"GET / HTTP/1.1...."},"app":{"protocol":"http","method":"GET","path":"/","version":"HTTP/1.1"},"app_decode_status":"decoded","app_source":"packet"}
+```
 
 In JSON mode, startup, stop, flow-event, and stats text are suppressed on
 stdout so consumers can parse stdout as JSON Lines. Errors still go to stderr.
@@ -748,6 +805,41 @@ test` and `make bench`. `fuzz-build` leaves its binaries in place instead, for
 interactive fuzzing beyond the bounded CI run, such as
 `./fuzz_parser -max_total_time=60 fuzz/corpus/parser`.
 
+## Man Page
+
+A man page lives at `man/minisniffer.1`, covering the same options and a few
+of the same examples as this README. View it directly without installing:
+
+```sh
+man ./man/minisniffer.1
+```
+
+`make install` installs it to `$(MANDIR)/minisniffer.1` (default
+`$(PREFIX)/share/man/man1/minisniffer.1`), after which `man minisniffer` works
+normally.
+
+## Shell Completions
+
+Bash, zsh, and fish completions live under `completions/`, covering every
+current flag and, where the CLI accepts a fixed set of values (`--protocol`,
+`--app`, `--domain-match`, `--flush-log`, `--dns-type`, `--dhcp-type`, and
+known HTTP methods), completing those values too.
+
+`make install` installs all three automatically. To use them without
+installing:
+
+```sh
+# bash: source directly, or copy into your completions directory
+source completions/minisniffer.bash
+
+# zsh: add the completions/ directory to fpath, then compinit
+fpath=(completions $fpath)
+autoload -U compinit && compinit
+
+# fish: copy (or symlink) into fish's user completions directory
+cp completions/minisniffer.fish ~/.config/fish/completions/minisniffer.fish
+```
+
 ## Continuous Integration
 
 GitHub Actions workflows are included for the expected quality gates. They are
@@ -774,6 +866,19 @@ runtime) and runs `make CC=clang fuzz-smoke` followed by
 `make CC=clang FUZZ_CI_SECONDS=20 fuzz-ci`; any crash, OOM, leak, or timeout
 artifact left behind by a fuzz session is uploaded so it can be downloaded and
 reproduced locally.
+
+### Release Workflow
+
+`.github/workflows/release.yml` is a separate, also manually triggered
+workflow for cutting a release. Unlike the CI and CodeQL workflows, it takes a
+required `tag` input (an existing tag such as `v0.3.0`) rather than running
+against a branch tip, so the build is reproducible from a fixed ref. It checks
+out that tag, runs `make test` and `make coverage`, builds `.tar.gz` and `.zip`
+source archives with `git archive` plus a `SHA256SUMS` checksum file, uploads
+the coverage report and test output as workflow-run artifacts, and creates (or
+updates) a GitHub release for the tag with the source archives and checksums
+attached. Pushing a tag does not trigger it by itself; run it manually from
+the Actions tab after the tag already exists.
 
 Run the full suite with LLVM line and branch coverage:
 
@@ -870,6 +975,9 @@ src/              MiniSniffer implementation
 tests/            Unit tests
 bench/            Lightweight local benchmarks
 fuzz/             Fuzzing harnesses, seed corpus, and standalone smoke driver
+man/              Man page (minisniffer.1)
+completions/      Bash, zsh, and fish shell completions
+packaging/        Packaging metadata (Homebrew formula, etc.)
 docs/             Architecture and project documentation
 Makefile          Build, test, bench, fuzz, check, install, and clean targets
 README.md         Project documentation
@@ -943,3 +1051,10 @@ Important modules:
   ignored. Exact matching is available at runtime; IDNA matching requires a
   libidn2-enabled build.
 - Live capture behavior depends on libpcap support and local OS permissions.
+- `packaging/homebrew/minisniffer.rb` is not yet published to homebrew-core
+  or a hosted tap; its stable `url`/`sha256` are placeholders until the first
+  tagged release exists. `brew install --HEAD` works immediately since it
+  builds from git directly.
+- `.github/workflows/release.yml` requires an existing tag name as input and
+  does not trigger automatically on tag push, matching this repository's
+  manual-`workflow_dispatch`-only convention for all workflows.

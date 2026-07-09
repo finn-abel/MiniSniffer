@@ -441,8 +441,7 @@ static void test_flow_table_stress_many_flows_exceed_capacity(void) {
     assert(flow_table_init(&table, max_flows, 64, 600));
 
     for (i = 0; i < total_flows; i++) {
-        PacketInfo packet =
-            make_tcp_packet("10.0.0.1", (uint16_t)(50000 + i), "10.0.0.9", 80, 10);
+        PacketInfo packet = make_tcp_packet("10.0.0.1", (uint16_t)(50000 + i), "10.0.0.9", 80, 10);
 
         assert(flow_table_get_or_create(&table, &packet, (uint64_t)(i + 1), &direction) != NULL);
         assert(table.count <= max_flows);

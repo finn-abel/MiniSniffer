@@ -15,8 +15,7 @@
 #define ARP_PTYPE_IPV4 0x0800
 #define ARP_HLEN_ETHERNET 6
 #define ARP_PLEN_IPV4 4
-#define ARP_ETHERNET_IPV4_LEN                                                                    \
-    (ARP_HEADER_LEN + 2 * ARP_HLEN_ETHERNET + 2 * ARP_PLEN_IPV4)
+#define ARP_ETHERNET_IPV4_LEN (ARP_HEADER_LEN + 2 * ARP_HLEN_ETHERNET + 2 * ARP_PLEN_IPV4)
 #define IPV4_MIN_HEADER_LEN 20
 #define IPV4_VERSION 4
 #define IPV6_HEADER_LEN 40
@@ -368,12 +367,11 @@ static int parse_arp_packet(const unsigned char *packet, size_t packet_len, size
     format_mac_address(arp_header + ARP_HEADER_LEN + ARP_HLEN_ETHERNET + ARP_PLEN_IPV4,
                        info->arp_target_mac, sizeof(info->arp_target_mac));
     if (inet_ntop(AF_INET, arp_header + ARP_HEADER_LEN + ARP_HLEN_ETHERNET, info->src_ip,
-                 sizeof(info->src_ip)) == NULL) {
+                  sizeof(info->src_ip)) == NULL) {
         return 1;
     }
-    if (inet_ntop(AF_INET,
-                 arp_header + ARP_HEADER_LEN + 2 * ARP_HLEN_ETHERNET + ARP_PLEN_IPV4, info->dst_ip,
-                 sizeof(info->dst_ip)) == NULL) {
+    if (inet_ntop(AF_INET, arp_header + ARP_HEADER_LEN + 2 * ARP_HLEN_ETHERNET + ARP_PLEN_IPV4,
+                  info->dst_ip, sizeof(info->dst_ip)) == NULL) {
         return 1;
     }
 
@@ -513,8 +511,8 @@ static int parse_ipv6_packet(const unsigned char *packet, size_t packet_len, siz
     }
 
     info->ip_version = 6;
-    transport = find_ipv6_transport(packet, parsed_packet_len, ip_offset + IPV6_HEADER_LEN,
-                                    next_header);
+    transport =
+        find_ipv6_transport(packet, parsed_packet_len, ip_offset + IPV6_HEADER_LEN, next_header);
     set_ip_protocol(transport.next_header, info);
     clear_transport_ports(info);
     if (!transport.transport_reachable) {

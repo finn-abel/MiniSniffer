@@ -1,6 +1,10 @@
 CC = gcc
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
+MANDIR ?= $(PREFIX)/share/man/man1
+BASH_COMPLETION_DIR ?= $(PREFIX)/share/bash-completion/completions
+ZSH_COMPLETION_DIR ?= $(PREFIX)/share/zsh/site-functions
+FISH_COMPLETION_DIR ?= $(PREFIX)/share/fish/vendor_completions.d
 PKG_CONFIG ?= pkg-config
 CLANG_FORMAT ?= $(shell command -v clang-format 2>/dev/null || xcrun --find clang-format 2>/dev/null || true)
 CFLAGS ?= -Wall -Wextra -Werror -std=c11 -g
@@ -257,8 +261,20 @@ check: test sanitize format-check static-check
 install: $(TARGET)
 	install -d '$(DESTDIR)$(BINDIR)'
 	install -m 0755 $(TARGET) '$(DESTDIR)$(BINDIR)/$(TARGET)'
+	install -d '$(DESTDIR)$(MANDIR)'
+	install -m 0644 man/minisniffer.1 '$(DESTDIR)$(MANDIR)/minisniffer.1'
+	install -d '$(DESTDIR)$(BASH_COMPLETION_DIR)'
+	install -m 0644 completions/minisniffer.bash '$(DESTDIR)$(BASH_COMPLETION_DIR)/minisniffer'
+	install -d '$(DESTDIR)$(ZSH_COMPLETION_DIR)'
+	install -m 0644 completions/_minisniffer '$(DESTDIR)$(ZSH_COMPLETION_DIR)/_minisniffer'
+	install -d '$(DESTDIR)$(FISH_COMPLETION_DIR)'
+	install -m 0644 completions/minisniffer.fish '$(DESTDIR)$(FISH_COMPLETION_DIR)/minisniffer.fish'
 
 uninstall:
 	rm -f '$(DESTDIR)$(BINDIR)/$(TARGET)'
+	rm -f '$(DESTDIR)$(MANDIR)/minisniffer.1'
+	rm -f '$(DESTDIR)$(BASH_COMPLETION_DIR)/minisniffer'
+	rm -f '$(DESTDIR)$(ZSH_COMPLETION_DIR)/_minisniffer'
+	rm -f '$(DESTDIR)$(FISH_COMPLETION_DIR)/minisniffer.fish'
 
 .PHONY: all bench check clean coverage format format-check fuzz-build fuzz-ci fuzz-smoke install run sanitize static-check test uninstall

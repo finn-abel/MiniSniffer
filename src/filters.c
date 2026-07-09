@@ -158,8 +158,7 @@ static int domain_name_equals_idna(const char *left, const char *right) {
     if (left == NULL || right == NULL) {
         return 0;
     }
-    if (idn2_lookup_u8((const uint8_t *)left, (uint8_t **)&left_ascii, IDN2_NFC_INPUT) !=
-            IDN2_OK ||
+    if (idn2_lookup_u8((const uint8_t *)left, (uint8_t **)&left_ascii, IDN2_NFC_INPUT) != IDN2_OK ||
         idn2_lookup_u8((const uint8_t *)right, (uint8_t **)&right_ascii, IDN2_NFC_INPUT) !=
             IDN2_OK) {
         free(left_ascii);

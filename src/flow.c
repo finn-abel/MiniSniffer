@@ -88,8 +88,7 @@ static bool flow_key_equals(const FlowKey *left, const FlowKey *right) {
            memcmp(left->a_ip.bytes, right->a_ip.bytes, sizeof(left->a_ip.bytes)) == 0 &&
            left->a_port == right->a_port && left->b_ip.family == right->b_ip.family &&
            memcmp(left->b_ip.bytes, right->b_ip.bytes, sizeof(left->b_ip.bytes)) == 0 &&
-           left->b_port == right->b_port &&
-           left->transport_protocol == right->transport_protocol;
+           left->b_port == right->b_port && left->transport_protocol == right->transport_protocol;
 }
 
 /*
@@ -288,7 +287,7 @@ void flow_table_evict_closed(FlowTable *table) {
     while (i < table->count) {
         if (flow_is_closed(&table->flows[i])) {
             bool rst = table->flows[i].directions[FLOW_DIR_A_TO_B].tcp.rst_seen ||
-                      table->flows[i].directions[FLOW_DIR_B_TO_A].tcp.rst_seen;
+                       table->flows[i].directions[FLOW_DIR_B_TO_A].tcp.rst_seen;
 
             if (rst) {
                 table->flows_closed_rst++;
@@ -334,7 +333,8 @@ FlowTableStats flow_table_snapshot_stats(const FlowTable *table) {
         snapshot.retransmissions += a_to_b->retransmissions + b_to_a->retransmissions;
         snapshot.out_of_order_segments +=
             a_to_b->out_of_order_segments + b_to_a->out_of_order_segments;
-        snapshot.overlapping_segments += a_to_b->overlapping_segments + b_to_a->overlapping_segments;
+        snapshot.overlapping_segments +=
+            a_to_b->overlapping_segments + b_to_a->overlapping_segments;
         snapshot.gaps += a_to_b->gaps + b_to_a->gaps;
         if (a_to_b->stream.data != NULL) {
             active_directions++;

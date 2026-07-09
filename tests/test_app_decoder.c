@@ -223,8 +223,8 @@ static void test_app_decode_packet_rejects_invalid_payload_views(void) {
 }
 
 static void test_app_decode_status_mapping(void) {
-    PacketInfo packet =
-        make_payload_packet(PROTO_TCP, 50000, 80, HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1);
+    PacketInfo packet = make_payload_packet(PROTO_TCP, 50000, 80, HTTP_GET_WITH_HOST,
+                                            sizeof(HTTP_GET_WITH_HOST) - 1);
     AppInfo info;
     AppDecodeResult result;
 

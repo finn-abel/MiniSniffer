@@ -1,0 +1,81 @@
+name: Release
+
+# Manual only, matching this repository's other workflows: pushing a tag does
+# not trigger anything by itself. Run this from the Actions tab after an
+# annotated tag (e.g. v0.3.0) already exists, so the build is reproducible
+# from a fixed ref rather than a moving branch tip.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish release artifacts for (e.g. v0.3.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build release artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate tag input looks like a tag, not a branch or SHA
+        run: |
+          if [[ ! "${{ inputs.tag }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag input '${{ inputs.tag }}' does not look like vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+      - name: Check out repository at tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify checked-out ref is an actual tag
+        run: git rev-parse --verify --quiet "refs/tags/${{ inputs.tag }}" || {
+          echo "::error::refs/tags/${{ inputs.tag }} does not exist"; exit 1; }
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libpcap-dev llvm pkg-config
+
+      - name: Run unit tests
+        run: make CC=clang test
+
+      - name: Generate coverage report
+        run: make CC=clang LLVM_PROFDATA=llvm-profdata LLVM_COV=llvm-cov coverage
+
+      - name: Build source archives
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p dist
+          prefix="minisniffer-${TAG#v}"
+          git archive --format=tar.gz --prefix="${prefix}/" -o "dist/${prefix}.tar.gz" "$TAG"
+          git archive --format=zip --prefix="${prefix}/" -o "dist/${prefix}.zip" "$TAG"
+          (cd dist && shasum -a 256 -- *.tar.gz *.zip > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Upload test and coverage artifacts (workflow run only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: minisniffer-${{ inputs.tag }}-test-coverage
+          path: |
+            /tmp/minisniffer-coverage/coverage.txt
+            /tmp/minisniffer-coverage/summary.json
+            /tmp/minisniffer-coverage/*.out
+          if-no-files-found: warn
+
+      - name: Create or update GitHub release with source archives and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber

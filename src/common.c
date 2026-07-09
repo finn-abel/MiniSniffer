@@ -102,15 +102,15 @@ void packet_info_print(const PacketInfo *info) {
             return;
         }
 
-        printf("[%03u] %-6s %s -> %s size=%zu", info->packet_number,
-               packet_protocol_display(info), info->src_ip, info->dst_ip, info->size);
+        printf("[%03u] %-6s %s -> %s size=%zu", info->packet_number, packet_protocol_display(info),
+               info->src_ip, info->dst_ip, info->size);
         if (info->has_icmp != 0) {
             printf(" type=%u code=%u", (unsigned int)info->icmp_type,
                    (unsigned int)info->icmp_code);
         }
         if (info->has_arp != 0) {
             printf(" op=%s sender_mac=%s target_mac=%s",
-                   info->arp_operation == 1 ? "request"
+                   info->arp_operation == 1   ? "request"
                    : info->arp_operation == 2 ? "reply"
                                               : "other",
                    info->arp_sender_mac, info->arp_target_mac);

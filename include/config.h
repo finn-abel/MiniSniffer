@@ -24,11 +24,7 @@
 #define MINISNIFFER_VERSION "0.2.0"
 
 typedef enum { LOG_FLUSH_ALWAYS = 0, LOG_FLUSH_LINE, LOG_FLUSH_EXIT } LogFlushMode;
-typedef enum {
-    DOMAIN_MATCH_NORMALIZED = 0,
-    DOMAIN_MATCH_EXACT,
-    DOMAIN_MATCH_IDNA
-} DomainMatchMode;
+typedef enum { DOMAIN_MATCH_NORMALIZED = 0, DOMAIN_MATCH_EXACT, DOMAIN_MATCH_IDNA } DomainMatchMode;
 
 /*
  * MiniSnifferConfig stores runtime options for one MiniSniffer-C run.

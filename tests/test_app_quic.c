@@ -28,8 +28,7 @@ static void test_app_quic_decodes_zero_length_connection_ids(void) {
     AppInfo info;
 
     assert(app_quic_decode_initial(QUIC_INITIAL_ZERO_LENGTH_CIDS,
-                                   sizeof(QUIC_INITIAL_ZERO_LENGTH_CIDS), &info) ==
-           APP_DECODE_OK);
+                                   sizeof(QUIC_INITIAL_ZERO_LENGTH_CIDS), &info) == APP_DECODE_OK);
     assert(info.quic_dcid[0] == '\0');
     assert(info.quic_scid[0] == '\0');
 }
@@ -46,8 +45,8 @@ static void test_app_quic_rejects_non_initial_long_header(void) {
     AppInfo info;
 
     assert(app_quic_decode_initial(QUIC_LONG_HEADER_NOT_INITIAL,
-                                   sizeof(QUIC_LONG_HEADER_NOT_INITIAL), &info) ==
-           APP_DECODE_NO_MATCH);
+                                   sizeof(QUIC_LONG_HEADER_NOT_INITIAL),
+                                   &info) == APP_DECODE_NO_MATCH);
 }
 
 static void test_app_quic_rejects_version_negotiation(void) {

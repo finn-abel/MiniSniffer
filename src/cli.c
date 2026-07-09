@@ -23,8 +23,7 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--json] [--flush-log <always|line|exit>]\n");
     fprintf(stream, "       [--decode-app] [--reassemble] [--max-flows <number>]\n");
     fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n");
-    fprintf(stream,
-            "       [--app <http|dns|tls|dhcp|mdns|quic>] [--http-host <host>]\n");
+    fprintf(stream, "       [--app <http|dns|tls|dhcp|mdns|quic>] [--http-host <host>]\n");
     fprintf(stream, "       [--http-method <method>] [--dns-query <name>] [--dns-type <type>]\n");
     fprintf(stream, "       [--tls-sni <host>] [--tls-alpn <protocol>]\n");
     fprintf(stream, "       [--dhcp-type <type>] [--quic-version <version>] [--stats]\n");
@@ -561,8 +560,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--host requires a value.");
             }
-            if (parse_ip_host(argv[i + 1], config->filter_host, sizeof(config->filter_host)) !=
-                0) {
+            if (parse_ip_host(argv[i + 1], config->filter_host, sizeof(config->filter_host)) != 0) {
                 return fail_invalid_host(program_name);
             }
             config->filter_host_enabled = 1;

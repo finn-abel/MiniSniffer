@@ -110,8 +110,8 @@ void stats_apply_ipv4_fragment_table(PacketStats *stats, const IPv4FragmentTable
     stats->ipv4_fragment_bytes_configured_max = table->max_bytes;
 }
 
-void stats_apply_pcap_drops(PacketStats *stats, bool available, uint32_t received,
-                            uint32_t dropped, uint32_t if_dropped) {
+void stats_apply_pcap_drops(PacketStats *stats, bool available, uint32_t received, uint32_t dropped,
+                            uint32_t if_dropped) {
     if (stats == NULL) {
         return;
     }
@@ -161,8 +161,7 @@ void stats_print(const PacketStats *stats) {
     printf("IPv4 fragments malformed: %u\n", stats->ipv4_fragments_malformed);
     printf("IPv4 fragments dropped: %u\n", stats->ipv4_fragments_dropped);
     printf("IPv4 fragment bytes in use: %zu\n", stats->ipv4_fragment_bytes_in_use);
-    printf("IPv4 fragment bytes configured max: %zu\n",
-           stats->ipv4_fragment_bytes_configured_max);
+    printf("IPv4 fragment bytes configured max: %zu\n", stats->ipv4_fragment_bytes_configured_max);
     if (stats->pcap_stats_available) {
         printf("Pcap packets received: %u\n", stats->pcap_packets_received);
         printf("Pcap packets dropped: %u\n", stats->pcap_packets_dropped);

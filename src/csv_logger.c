@@ -367,9 +367,10 @@ static void write_app_packet(const PacketInfo *packet, const AppInfo *app, const
     write_csv_text(log_file, row_app->quic_scid);
     fprintf(log_file, ",");
     if (packet->has_arp != 0) {
-        fprintf(log_file, "%s", packet->arp_operation == 1   ? "request"
-                                : packet->arp_operation == 2 ? "reply"
-                                                              : "other");
+        fprintf(log_file, "%s",
+                packet->arp_operation == 1   ? "request"
+                : packet->arp_operation == 2 ? "reply"
+                                             : "other");
     }
     fprintf(log_file, ",");
     write_csv_text(log_file, packet->arp_sender_mac);

@@ -62,8 +62,7 @@ typedef struct {
 bool ipv4_fragment_table_init(IPv4FragmentTable *table, size_t max_datagrams, size_t max_bytes,
                               uint32_t timeout_seconds);
 void ipv4_fragment_table_cleanup(IPv4FragmentTable *table);
-void ipv4_fragment_table_expire(IPv4FragmentTable *table, uint64_t now_seconds,
-                                PacketStats *stats);
+void ipv4_fragment_table_expire(IPv4FragmentTable *table, uint64_t now_seconds, PacketStats *stats);
 IPv4FragmentProcessResult ipv4_fragment_table_process(IPv4FragmentTable *table,
                                                       const PacketInfo *fragment,
                                                       uint64_t now_seconds, PacketStats *stats);

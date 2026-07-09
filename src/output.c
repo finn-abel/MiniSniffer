@@ -520,7 +520,7 @@ void output_print_packet_json(const PacketInfo *packet, const AppInfo *app, cons
         printf(",\"arp\":{\"operation\":");
         print_json_string(packet->arp_operation == 1   ? "request"
                           : packet->arp_operation == 2 ? "reply"
-                                                        : "other");
+                                                       : "other");
         printf(",\"sender_mac\":");
         print_json_string(packet->arp_sender_mac);
         printf(",\"sender_ip\":");

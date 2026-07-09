@@ -133,10 +133,10 @@ AppDecodeResult app_dhcp_decode_udp(const uint8_t *data, size_t length, AppInfo 
 
     out->protocol = APP_PROTO_DHCP;
     inet_ntop(AF_INET, data + BOOTP_CIADDR_OFFSET, out->dhcp_client_ip,
-             sizeof(out->dhcp_client_ip));
+              sizeof(out->dhcp_client_ip));
     inet_ntop(AF_INET, data + BOOTP_YIADDR_OFFSET, out->dhcp_your_ip, sizeof(out->dhcp_your_ip));
     inet_ntop(AF_INET, data + BOOTP_SIADDR_OFFSET, out->dhcp_server_ip,
-             sizeof(out->dhcp_server_ip));
+              sizeof(out->dhcp_server_ip));
     if (htype == BOOTP_HTYPE_ETHERNET && hlen == BOOTP_HLEN_ETHERNET) {
         snprintf(out->dhcp_client_mac, sizeof(out->dhcp_client_mac),
                  "%02x:%02x:%02x:%02x:%02x:%02x", data[BOOTP_CHADDR_OFFSET],

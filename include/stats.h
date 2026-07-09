@@ -57,8 +57,8 @@ void stats_apply_ipv4_fragment_table(PacketStats *stats, const IPv4FragmentTable
  * available=true; offline reads and unsupported platforms should pass false,
  * leaving the counters unpopulated.
  */
-void stats_apply_pcap_drops(PacketStats *stats, bool available, uint32_t received,
-                            uint32_t dropped, uint32_t if_dropped);
+void stats_apply_pcap_drops(PacketStats *stats, bool available, uint32_t received, uint32_t dropped,
+                            uint32_t if_dropped);
 
 /*
  * Prints a summary of displayed packet counts and average packet size.

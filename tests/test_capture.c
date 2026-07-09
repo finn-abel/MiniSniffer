@@ -99,7 +99,7 @@ int test_pcap_compile(pcap_t *handle, struct bpf_program *program, const char *e
     fake_pcap.last_compile_expression[0] = '\0';
     if (expression != NULL) {
         snprintf(fake_pcap.last_compile_expression, sizeof(fake_pcap.last_compile_expression), "%s",
-                expression);
+                 expression);
     }
     if (!fake_pcap.compile_succeeds) {
         snprintf(fake_pcap.error, sizeof(fake_pcap.error), "synthetic compile error");
@@ -825,9 +825,8 @@ static void test_capture_reassembles_ipv4_fragments_for_app_decode(void) {
     AppConfig config = make_capture_config(device_name);
     PacketStats stats;
 
-    datagram_payload_length =
-        build_tcp_datagram_payload(datagram_payload, sizeof(datagram_payload), http_request,
-                                   sizeof(http_request) - 1);
+    datagram_payload_length = build_tcp_datagram_payload(datagram_payload, sizeof(datagram_payload),
+                                                         http_request, sizeof(http_request) - 1);
     first_length = build_ipv4_fragment_packet(first_packet, sizeof(first_packet), 77, 0, 1,
                                               datagram_payload, 24);
     second_length = build_ipv4_fragment_packet(second_packet, sizeof(second_packet), 77, 24, 0,
@@ -928,13 +927,12 @@ static void test_capture_reassembled_flow_closes_on_rst_and_updates_stats(void) 
     AppConfig config = make_capture_config(device_name);
     PacketStats stats;
 
-    first_length =
-        build_tcp_packet(first_packet, sizeof(first_packet), 100, http_request,
-                         sizeof(http_request) - 1);
+    first_length = build_tcp_packet(first_packet, sizeof(first_packet), 100, http_request,
+                                    sizeof(http_request) - 1);
     /* A bare RST closes the flow even though it carries no payload. */
-    second_length = build_tcp_packet_with_flags(
-        second_packet, sizeof(second_packet), 100 + (uint32_t)(sizeof(http_request) - 1), 0x14,
-        NULL, 0);
+    second_length =
+        build_tcp_packet_with_flags(second_packet, sizeof(second_packet),
+                                    100 + (uint32_t)(sizeof(http_request) - 1), 0x14, NULL, 0);
 
     reset_fake_pcap();
     set_single_device(&device);
@@ -1157,7 +1155,7 @@ static void test_capture_applies_pcap_drops_for_live_capture_only(void) {
         config_init_defaults(&offline_config);
         offline_config.read_path_enabled = true;
         snprintf(offline_config.read_path, sizeof(offline_config.read_path), "%s",
-                "/tmp/input.pcap");
+                 "/tmp/input.pcap");
         offline_config.max_packets = 1;
 
         stats_init(&stats);
