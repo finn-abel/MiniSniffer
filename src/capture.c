@@ -50,6 +50,10 @@ static void print_open_live_error(const char *device, const char *error_message)
 static int has_ipv4_address(const pcap_if_t *device) {
     pcap_addr_t *address;
 
+    if (device == NULL) {
+        return 0;
+    }
+
     for (address = device->addresses; address != NULL; address = address->next) {
         if (address->addr != NULL && address->addr->sa_family == AF_INET) {
             return 1;
@@ -59,7 +63,27 @@ static int has_ipv4_address(const pcap_if_t *device) {
     return 0;
 }
 
+static int has_ipv6_address(const pcap_if_t *device) {
+    pcap_addr_t *address;
+
+    if (device == NULL) {
+        return 0;
+    }
+
+    for (address = device->addresses; address != NULL; address = address->next) {
+        if (address->addr != NULL && address->addr->sa_family == AF_INET6) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static int is_loopback_device(const pcap_if_t *device) {
+    if (device == NULL) {
+        return 0;
+    }
+
     return (device->flags & PCAP_IF_LOOPBACK) != 0;
 }
 
@@ -91,6 +115,79 @@ static int copy_device_name(char *destination, size_t destination_size, const ch
     }
 
     memcpy(destination, name, length + 1);
+    return 0;
+}
+
+static void print_interface_hints(FILE *stream, const pcap_if_t *device) {
+    int printed = 0;
+
+    fprintf(stream, " [");
+    if (is_preferred_default_device(device)) {
+        fprintf(stream, "default-candidate");
+        printed = 1;
+    }
+    if (is_loopback_device(device)) {
+        fprintf(stream, "%sloopback", printed ? ", " : "");
+        printed = 1;
+    }
+    if (device != NULL && is_apple_internal_device_name(device->name)) {
+        fprintf(stream, "%sinternal", printed ? ", " : "");
+        printed = 1;
+    }
+    if (has_ipv4_address(device)) {
+        fprintf(stream, "%sipv4", printed ? ", " : "");
+        printed = 1;
+    }
+    if (has_ipv6_address(device)) {
+        fprintf(stream, "%sipv6", printed ? ", " : "");
+        printed = 1;
+    }
+    if (!printed) {
+        fprintf(stream, "no-addresses");
+    }
+    fprintf(stream, "]");
+}
+
+static void print_interface_line(FILE *stream, const pcap_if_t *device) {
+    const char *marker = " ";
+    const char *name = "(unnamed)";
+    const char *description = "(no description)";
+
+    if (device != NULL) {
+        marker = is_preferred_default_device(device) ? "*" : " ";
+        if (device->name != NULL) {
+            name = device->name;
+        }
+        if (device->description != NULL && device->description[0] != '\0') {
+            description = device->description;
+        }
+    }
+
+    fprintf(stream, "%s %s - %s", marker, name, description);
+    print_interface_hints(stream, device);
+    fprintf(stream, "\n");
+}
+
+int capture_list_interfaces(FILE *stream) {
+    char error_buffer[PCAP_ERRBUF_SIZE];
+    pcap_if_t *devices = NULL;
+    pcap_if_t *current;
+    FILE *output = stream == NULL ? stdout : stream;
+
+    if (pcap_findalldevs(&devices, error_buffer) != 0) {
+        fprintf(stderr, "Error: failed to list capture interfaces: %s\n", error_buffer);
+        return 1;
+    }
+
+    fprintf(output, "Capture interfaces:\n");
+    for (current = devices; current != NULL; current = current->next) {
+        print_interface_line(output, current);
+    }
+    if (devices == NULL) {
+        fprintf(output, "(none)\n");
+    }
+
+    pcap_freealldevs(devices);
     return 0;
 }
 
@@ -262,7 +359,9 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         }
     }
 
-    printf("Starting capture on interface: %s\n", device);
+    if (!config->quiet) {
+        printf("Starting capture on interface: %s\n", device);
+    }
 
     /*
      * Open a live capture handle with conservative local-capture settings:
@@ -414,7 +513,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         stats_update(stats, &info);
     }
 
-    if (should_stop) {
+    if (should_stop && !config->quiet) {
         printf("\nCapture stopped.\n");
     }
 

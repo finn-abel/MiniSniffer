@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #define capture_start capture_start_mocked
+#define capture_list_interfaces capture_list_interfaces_mocked
 #define pcap_close test_pcap_close
 #define pcap_datalink test_pcap_datalink
 #define pcap_findalldevs test_pcap_findalldevs
@@ -12,6 +13,7 @@
 #define pcap_next_ex test_pcap_next_ex
 #define pcap_open_live test_pcap_open_live
 #include "../src/capture.c"
+#undef capture_list_interfaces
 #undef capture_start
 #undef pcap_close
 #undef pcap_datalink
@@ -144,6 +146,23 @@ static void set_single_device(pcap_if_t *device) {
     device->next = NULL;
 }
 
+static void capture_interface_list_output(char *buffer, size_t buffer_size) {
+    FILE *capture;
+    size_t bytes_read;
+
+    assert(buffer != NULL);
+    assert(buffer_size > 0);
+
+    capture = tmpfile();
+    assert(capture != NULL);
+    assert(capture_list_interfaces_mocked(capture) == 0);
+    rewind(capture);
+    bytes_read = fread(buffer, 1, buffer_size - 1, capture);
+    buffer[bytes_read] = '\0';
+    assert(!ferror(capture));
+    fclose(capture);
+}
+
 static size_t build_tcp_packet(unsigned char *packet, size_t packet_capacity, uint32_t sequence,
                                const uint8_t *payload, size_t payload_length) {
     const size_t ethernet_length = 14;
@@ -223,6 +242,7 @@ static void test_capture_device_helpers(void) {
     device = make_device(en_name, 0, &null_entry, NULL);
 
     assert(has_ipv4_address(&device));
+    assert(has_ipv6_address(&device));
     assert(!is_loopback_device(&device));
     assert(is_preferred_default_device(&device));
     device.flags = PCAP_IF_LOOPBACK;
@@ -315,6 +335,42 @@ static void test_interface_exists_paths(void) {
     reset_fake_pcap();
     fake_pcap.find_result = -1;
     assert(!interface_exists("en0", error_buffer));
+}
+
+static void test_capture_list_interfaces_prints_hints(void) {
+    char output[1024];
+    struct sockaddr ipv4;
+    struct sockaddr ipv6;
+    pcap_addr_t ipv4_entry;
+    pcap_addr_t ipv6_entry;
+    char en_name[] = "en0";
+    char loop_name[] = "lo0";
+    char awdl_name[] = "awdl0";
+    char en_description[] = "Wi-Fi";
+    pcap_if_t awdl;
+    pcap_if_t loop;
+    pcap_if_t en;
+
+    memset(&ipv4, 0, sizeof(ipv4));
+    memset(&ipv6, 0, sizeof(ipv6));
+    ipv4.sa_family = AF_INET;
+    ipv6.sa_family = AF_INET6;
+    ipv4_entry = make_address(&ipv4, NULL);
+    ipv6_entry = make_address(&ipv6, NULL);
+    awdl = make_device(awdl_name, 0, &ipv6_entry, NULL);
+    loop = make_device(loop_name, PCAP_IF_LOOPBACK, NULL, &awdl);
+    en = make_device(en_name, 0, &ipv4_entry, &loop);
+    en.description = en_description;
+
+    reset_fake_pcap();
+    fake_pcap.devices = &en;
+    capture_interface_list_output(output, sizeof(output));
+
+    TEST_ASSERT_CONTAINS(output, "Capture interfaces:\n");
+    TEST_ASSERT_CONTAINS(output, "* en0 - Wi-Fi [default-candidate, ipv4]\n");
+    TEST_ASSERT_CONTAINS(output, "  lo0 - (no description) [loopback]\n");
+    TEST_ASSERT_CONTAINS(output, "  awdl0 - (no description) [internal, ipv6]\n");
+    assert(fake_pcap.free_count == 1);
 }
 
 static void test_capture_setup_failures(void) {
@@ -518,6 +574,7 @@ int main(void) {
     test_capture_device_helpers();
     test_choose_default_device_paths();
     test_interface_exists_paths();
+    test_capture_list_interfaces_prints_hints();
     test_capture_setup_failures();
     test_capture_loop_handles_timeout_error_and_bad_packet();
     test_capture_processes_and_filters_packets();

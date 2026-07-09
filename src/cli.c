@@ -12,7 +12,9 @@ static void print_usage(FILE *stream, const char *program_name) {
     const char *name = program_name == NULL ? "MiniSniffer" : program_name;
 
     /* Keep usage text in one place so errors and --help stay consistent. */
-    fprintf(stream, "Usage: %s [--help] [--interface <name>] [--count <number>]\n", name);
+    fprintf(stream, "Usage: %s [--help] [--version] [--list-interfaces] [--interface <name>]\n",
+            name);
+    fprintf(stream, "       [--count <number>] [--quiet] [--verbose] [--no-color]\n");
     fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
     fprintf(stream, "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
@@ -327,8 +329,18 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             return 0;
         }
 
-        /* Value options update AppConfig and advance past their argument. */
-        if (strcmp(argv[i], "--interface") == 0) {
+        if (strcmp(argv[i], "--version") == 0) {
+            config->version_requested = true;
+        } else if (strcmp(argv[i], "--list-interfaces") == 0) {
+            config->list_interfaces = true;
+        } else if (strcmp(argv[i], "--quiet") == 0) {
+            config->quiet = true;
+        } else if (strcmp(argv[i], "--verbose") == 0) {
+            config->verbose = true;
+        } else if (strcmp(argv[i], "--no-color") == 0) {
+            config->color_enabled = false;
+            /* Value options update AppConfig and advance past their argument. */
+        } else if (strcmp(argv[i], "--interface") == 0) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--interface requires a value.");
             }

@@ -21,6 +21,11 @@ void config_init_defaults(AppConfig *config) {
     config->flow_timeout_seconds = MINISNIFFER_DEFAULT_FLOW_TIMEOUT_SECONDS;
     config->max_packets = 0;
     config->stats_mode = 0;
+    config->version_requested = false;
+    config->list_interfaces = false;
+    config->quiet = false;
+    config->verbose = false;
+    config->color_enabled = true;
     config->filter_protocol_enabled = 0;
     config->filter_protocol = PROTO_OTHER;
     config->filter_port_enabled = 0;

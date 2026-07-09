@@ -15,6 +15,7 @@
 #define MINISNIFFER_MAX_FLOWS 1024
 #define MINISNIFFER_MAX_STREAM_BUFFER_BYTES 1048576
 #define MINISNIFFER_MAX_TOTAL_REASSEMBLY_BYTES 134217728
+#define MINISNIFFER_VERSION "0.2.0"
 
 /*
  * MiniSnifferConfig stores runtime options for one MiniSniffer-C run.
@@ -36,6 +37,11 @@ typedef struct {
 
     int max_packets;
     int stats_mode;
+    bool version_requested;
+    bool list_interfaces;
+    bool quiet;
+    bool verbose;
+    bool color_enabled;
 
     int filter_protocol_enabled;
     Protocol filter_protocol;

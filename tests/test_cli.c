@@ -9,7 +9,8 @@
 #include "config.h"
 
 static const char *EXPECTED_USAGE =
-    "Usage: MiniSniffer [--help] [--interface <name>] [--count <number>]\n"
+    "Usage: MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name>]\n"
+    "       [--count <number>] [--quiet] [--verbose] [--no-color]\n"
     "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n"
     "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n"
     "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n"
@@ -91,6 +92,27 @@ static void test_cli_parse_args_accepts_help(void) {
     config_init_defaults(&config);
 
     assert(cli_parse_args(2, argv, &config) == 0);
+}
+
+static void test_cli_parse_args_sets_interface_ux_flags(void) {
+    AppConfig config;
+    char *version[] = {"MiniSniffer", "--version"};
+    char *list[] = {"MiniSniffer", "--list-interfaces"};
+    char *quiet_verbose[] = {"MiniSniffer", "--quiet", "--verbose", "--no-color"};
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(2, version, &config) == 0);
+    assert(config.version_requested == true);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(2, list, &config) == 0);
+    assert(config.list_interfaces == true);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, quiet_verbose, &config) == 0);
+    assert(config.quiet == true);
+    assert(config.verbose == true);
+    assert(config.color_enabled == false);
 }
 
 static void test_cli_parse_args_sets_interface(void) {
@@ -607,6 +629,7 @@ static void test_cli_print_usage_accepts_null_program_name(void) {
 int main(void) {
     test_cli_parse_args_accepts_no_args();
     test_cli_parse_args_accepts_help();
+    test_cli_parse_args_sets_interface_ux_flags();
     test_cli_parse_args_sets_interface();
     test_cli_parse_args_sets_count();
     test_cli_parse_args_sets_protocol();

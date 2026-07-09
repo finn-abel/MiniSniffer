@@ -12,6 +12,11 @@ static void test_config_defaults_capture_options(void) {
     assert(strcmp(config.interface_name, "") == 0);
     assert(config.max_packets == 0);
     assert(config.stats_mode == 0);
+    assert(config.version_requested == false);
+    assert(config.list_interfaces == false);
+    assert(config.quiet == false);
+    assert(config.verbose == false);
+    assert(config.color_enabled == true);
 }
 
 static void test_config_defaults_app_decode_options(void) {

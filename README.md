@@ -113,7 +113,8 @@ sudo ./MiniSniffer --protocol tcp --payload --payload-bytes 80 --payload-contain
 ## Usage
 
 ```text
-Usage: ./MiniSniffer [--help] [--interface <name>] [--count <number>]
+Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name>]
+       [--count <number>] [--quiet] [--verbose] [--no-color]
        [--protocol <tcp|udp|icmp|other>] [--port <number>]
        [--host <ipv4>] [--payload] [--payload-bytes <number>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
@@ -129,8 +130,13 @@ Usage: ./MiniSniffer [--help] [--interface <name>] [--count <number>]
 | Option | Description |
 | --- | --- |
 | `--help` | Print usage and exit. |
+| `--version` | Print the MiniSniffer version and exit. |
+| `--list-interfaces` | List libpcap capture devices with descriptions, address hints, and default-candidate markers. |
 | `--interface <name>` | Capture from a specific interface, such as `en0`. |
 | `--count <number>` | Stop after this many displayed packets. If omitted, capture continues until Ctrl+C. |
+| `--quiet` | Suppress startup and stop summaries. Packet output and errors still print. |
+| `--verbose` | Print the full startup configuration summary before capture. |
+| `--no-color` | Disable terminal color output. Current MiniSniffer output is plain text. |
 | `--protocol <tcp|udp|icmp|other>` | Display only packets matching the selected protocol. |
 | `--port <number>` | Display only TCP/UDP packets where the source or destination port matches. |
 | `--host <ipv4>` | Display only packets where the source or destination IPv4 address matches. |
@@ -162,6 +168,16 @@ When `--interface` is omitted, MiniSniffer enumerates libpcap devices and
 chooses a practical default. On macOS it prefers normal non-loopback IPv4
 interfaces such as `en0` and avoids common internal or tunnel interfaces such
 as `ap*`, `awdl*`, `llw*`, and `utun*`.
+
+List the interfaces MiniSniffer can see:
+
+```sh
+./MiniSniffer --list-interfaces
+```
+
+The `*` marker indicates a default candidate. Hints include `loopback`,
+`internal`, `ipv4`, and `ipv6` when MiniSniffer can infer them from libpcap
+metadata.
 
 If automatic selection does not choose the interface you want, pass the
 interface explicitly:
@@ -464,9 +480,10 @@ sudo ./MiniSniffer --count 5
 
 ### Wrong interface selected
 
-Pass the interface explicitly:
+List interfaces, then pass the interface explicitly:
 
 ```sh
+./MiniSniffer --list-interfaces
 sudo ./MiniSniffer --interface en0 --count 5
 ```
 
@@ -480,6 +497,7 @@ Error: interface 'fake0' was not found.
 
 Use an interface name available to libpcap on your machine. Common macOS names
 include `en0` for Wi-Fi or Ethernet, depending on hardware and configuration.
+Run `./MiniSniffer --list-interfaces` to see the names libpcap reports.
 
 ### Invalid CLI input
 
