@@ -17,6 +17,8 @@
 #define MINISNIFFER_MAX_TOTAL_REASSEMBLY_BYTES 134217728
 #define MINISNIFFER_VERSION "0.2.0"
 
+typedef enum { LOG_FLUSH_ALWAYS = 0, LOG_FLUSH_LINE, LOG_FLUSH_EXIT } LogFlushMode;
+
 /*
  * MiniSnifferConfig stores runtime options for one MiniSniffer-C run.
  * Empty interface_name means the capture layer should choose the default device.
@@ -42,6 +44,8 @@ typedef struct {
     bool quiet;
     bool verbose;
     bool color_enabled;
+    bool json_output;
+    LogFlushMode log_flush_mode;
 
     int filter_protocol_enabled;
     Protocol filter_protocol;

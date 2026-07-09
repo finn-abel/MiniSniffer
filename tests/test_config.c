@@ -17,6 +17,8 @@ static void test_config_defaults_capture_options(void) {
     assert(config.quiet == false);
     assert(config.verbose == false);
     assert(config.color_enabled == true);
+    assert(config.json_output == false);
+    assert(config.log_flush_mode == LOG_FLUSH_LINE);
 }
 
 static void test_config_defaults_app_decode_options(void) {

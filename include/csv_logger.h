@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "common.h"
+#include "config.h"
 
 /*
  * Opens a CSV log with either the legacy packet schema or the stable app schema.
@@ -11,7 +12,7 @@
  * The path must not already exist; new files are created with mode 0600.
  */
 int csv_logger_open(const char *path, bool app_columns_enabled, bool payload_columns_enabled,
-                    size_t payload_preview_limit);
+                    size_t payload_preview_limit, LogFlushMode flush_mode);
 
 /*
  * Writes one displayed packet row.

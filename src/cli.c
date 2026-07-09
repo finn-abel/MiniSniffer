@@ -18,6 +18,7 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
     fprintf(stream, "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
+    fprintf(stream, "       [--json] [--flush-log <always|line|exit>]\n");
     fprintf(stream, "       [--decode-app] [--reassemble] [--max-flows <number>]\n");
     fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n");
     fprintf(stream,
@@ -180,6 +181,26 @@ static int fail_invalid_positive_size(const char *program_name, const char *opti
     return 1;
 }
 
+static int parse_log_flush_mode(const char *text, LogFlushMode *mode) {
+    if (text == NULL || mode == NULL) {
+        return 1;
+    }
+    if (strcmp(text, "always") == 0) {
+        *mode = LOG_FLUSH_ALWAYS;
+        return 0;
+    }
+    if (strcmp(text, "line") == 0) {
+        *mode = LOG_FLUSH_LINE;
+        return 0;
+    }
+    if (strcmp(text, "exit") == 0) {
+        *mode = LOG_FLUSH_EXIT;
+        return 0;
+    }
+
+    return 1;
+}
+
 /*
  * App protocol names are lowercase on the CLI to match future app filter names
  * and CSV app_protocol values.
@@ -339,6 +360,8 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             config->verbose = true;
         } else if (strcmp(argv[i], "--no-color") == 0) {
             config->color_enabled = false;
+        } else if (strcmp(argv[i], "--json") == 0) {
+            config->json_output = true;
             /* Value options update AppConfig and advance past their argument. */
         } else if (strcmp(argv[i], "--interface") == 0) {
             if (!has_value(argc, argv, i)) {
@@ -401,6 +424,14 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
                 return fail_with_error(program_name, "log path is too long.");
             }
             config->logging_enabled = 1;
+            i++;
+        } else if (strcmp(argv[i], "--flush-log") == 0) {
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--flush-log requires a value.");
+            }
+            if (parse_log_flush_mode(argv[i + 1], &config->log_flush_mode) != 0) {
+                return fail_with_error(program_name, "--flush-log must be always, line, or exit.");
+            }
             i++;
         } else if (strcmp(argv[i], "--payload") == 0) {
             /* Display is independent from filtering; filters can run silently. */

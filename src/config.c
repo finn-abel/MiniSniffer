@@ -26,6 +26,8 @@ void config_init_defaults(AppConfig *config) {
     config->quiet = false;
     config->verbose = false;
     config->color_enabled = true;
+    config->json_output = false;
+    config->log_flush_mode = LOG_FLUSH_LINE;
     config->filter_protocol_enabled = 0;
     config->filter_protocol = PROTO_OTHER;
     config->filter_port_enabled = 0;

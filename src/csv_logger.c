@@ -13,6 +13,7 @@ static FILE *log_file = NULL;
 static bool app_columns_enabled = false;
 static bool payload_columns_enabled = false;
 static size_t payload_logging_limit = MINISNIFFER_DEFAULT_PAYLOAD_PREVIEW_BYTES;
+static LogFlushMode active_flush_mode = LOG_FLUSH_LINE;
 
 /*
  * Empty string keeps UNKNOWN app values as blank CSV fields rather than a
@@ -169,7 +170,7 @@ static int write_header(const char *path) {
  * column layout.
  */
 int csv_logger_open(const char *path, bool enable_app_columns, bool enable_payload_columns,
-                    size_t payload_preview_limit) {
+                    size_t payload_preview_limit, LogFlushMode flush_mode) {
     int fd;
 
     if (path == NULL || path[0] == '\0') {
@@ -180,6 +181,7 @@ int csv_logger_open(const char *path, bool enable_app_columns, bool enable_paylo
     app_columns_enabled = enable_app_columns;
     payload_columns_enabled = enable_payload_columns;
     payload_logging_limit = payload_preview_limit;
+    active_flush_mode = flush_mode;
     if (payload_logging_limit > MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES) {
         payload_logging_limit = MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES;
     }
@@ -346,7 +348,7 @@ int csv_logger_write_packet(const PacketInfo *packet, const AppInfo *app, const 
         write_legacy_packet(packet);
     }
 
-    if (ferror(log_file) || fflush(log_file) != 0) {
+    if (ferror(log_file) || (active_flush_mode != LOG_FLUSH_EXIT && fflush(log_file) != 0)) {
         fprintf(stderr, "Error: failed to write CSV log data.\n");
         return 1;
     }

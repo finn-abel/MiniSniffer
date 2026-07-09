@@ -359,7 +359,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         }
     }
 
-    if (!config->quiet) {
+    if (!config->quiet && !config->json_output) {
         printf("Starting capture on interface: %s\n", device);
     }
 
@@ -395,7 +395,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     /* Open output only after capture and optional flow state are ready. */
     if (config->logging_enabled != 0 &&
         csv_logger_open(config->log_path, config->decode_app, config->payload_display_enabled != 0,
-                        config->payload_preview_bytes) != 0) {
+                        config->payload_preview_bytes, config->log_flush_mode) != 0) {
         flow_table_cleanup(&flow_table);
         pcap_close(handle);
         return 1;
@@ -485,7 +485,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             continue;
         }
 
-        if (flow != NULL && flow->app_classified && !flow->app_event_printed) {
+        if (!config->json_output && flow != NULL && flow->app_classified &&
+            !flow->app_event_printed) {
             output_print_flow_app_event(flow);
             flow->app_event_printed = true;
         }
@@ -496,12 +497,18 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
          */
         captured_packets++;
         info.packet_number = captured_packets;
-        packet_info_print(&info);
-        if (config->decode_app && packet_app_ptr != NULL) {
-            output_print_packet_app(packet_app_ptr);
-        }
-        if (config->payload_display_enabled != 0) {
-            packet_info_print_payload(&info, config->payload_preview_bytes);
+        if (config->json_output) {
+            output_print_packet_json(&info, packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
+                                     app_source, config->payload_display_enabled != 0,
+                                     config->payload_preview_bytes);
+        } else {
+            packet_info_print(&info);
+            if (config->decode_app && packet_app_ptr != NULL) {
+                output_print_packet_app(packet_app_ptr);
+            }
+            if (config->payload_display_enabled != 0) {
+                packet_info_print_payload(&info, config->payload_preview_bytes);
+            }
         }
         if (csv_logger_write_packet(&info, packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
                                     app_source) != 0) {
@@ -513,7 +520,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         stats_update(stats, &info);
     }
 
-    if (should_stop && !config->quiet) {
+    if (should_stop && !config->quiet && !config->json_output) {
         printf("\nCapture stopped.\n");
     }
 

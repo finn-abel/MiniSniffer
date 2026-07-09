@@ -7,6 +7,52 @@
 
 #include "output.h"
 
+typedef void (*CaptureFunction)(void *context);
+
+typedef struct JsonCaptureContext {
+    PacketInfo packet;
+    AppInfo app;
+    const char *app_source;
+    int payload_enabled;
+    size_t payload_limit;
+} JsonCaptureContext;
+
+static void capture_stdout(CaptureFunction function, void *context, char *output,
+                           size_t output_size) {
+    FILE *capture;
+    int saved_stdout;
+    size_t length;
+
+    capture = tmpfile();
+    assert(capture != NULL);
+    saved_stdout = dup(STDOUT_FILENO);
+    assert(saved_stdout >= 0);
+    assert(fflush(stdout) == 0);
+    assert(dup2(fileno(capture), STDOUT_FILENO) >= 0);
+
+    function(context);
+
+    assert(fflush(stdout) == 0);
+    assert(dup2(saved_stdout, STDOUT_FILENO) >= 0);
+    close(saved_stdout);
+
+    rewind(capture);
+    length = fread(output, 1, output_size - 1, capture);
+    output[length] = '\0';
+    fclose(capture);
+}
+
+static void call_output_print_packet_app(void *context) {
+    output_print_packet_app((const AppInfo *)context);
+}
+
+static void call_output_print_packet_json(void *context) {
+    JsonCaptureContext *capture = context;
+
+    output_print_packet_json(&capture->packet, &capture->app, capture->app_source,
+                             capture->payload_enabled != 0, capture->payload_limit);
+}
+
 static void test_output_print_packet_app_accepts_protocols(void) {
     AppInfo app;
 
@@ -48,34 +94,75 @@ static void test_output_print_flow_app_event_accepts_flow(void) {
 
 static void test_output_escapes_terminal_control_bytes(void) {
     AppInfo app;
-    FILE *capture;
-    int saved_stdout;
     char output[512];
-    size_t length;
 
     memset(&app, 0, sizeof(app));
     app.protocol = APP_PROTO_HTTP;
     snprintf(app.http_host, sizeof(app.http_host), "evil%c]0;owned%c", 0x1b, 0x07);
 
-    capture = tmpfile();
-    assert(capture != NULL);
-    saved_stdout = dup(STDOUT_FILENO);
-    assert(saved_stdout >= 0);
-    assert(fflush(stdout) == 0);
-    assert(dup2(fileno(capture), STDOUT_FILENO) >= 0);
-
-    output_print_packet_app(&app);
-    assert(fflush(stdout) == 0);
-    assert(dup2(saved_stdout, STDOUT_FILENO) >= 0);
-    close(saved_stdout);
-
-    rewind(capture);
-    length = fread(output, 1, sizeof(output) - 1, capture);
-    output[length] = '\0';
-    fclose(capture);
+    capture_stdout(call_output_print_packet_app, &app, output, sizeof(output));
 
     assert(strchr(output, 0x1b) == NULL);
     assert(strstr(output, "evil\\x1b]0;owned\\x07") != NULL);
+}
+
+static void test_output_print_packet_json_matches_golden(void) {
+    JsonCaptureContext capture;
+    char output[2048];
+
+    memset(&capture, 0, sizeof(capture));
+    snprintf(capture.packet.timestamp, sizeof(capture.packet.timestamp), "1710000000.123456");
+    capture.packet.packet_number = 7;
+    capture.packet.protocol = PROTO_TCP;
+    snprintf(capture.packet.src_ip, sizeof(capture.packet.src_ip), "192.168.1.25");
+    snprintf(capture.packet.dst_ip, sizeof(capture.packet.dst_ip), "93.184.216.34");
+    capture.packet.has_ports = 1;
+    capture.packet.src_port = 51432;
+    capture.packet.dst_port = 80;
+    capture.packet.size = 91;
+    capture.packet.has_payload = 1;
+    capture.packet.payload_capture_length = 37;
+    capture.packet.payload_preview_length = 4;
+    memcpy(capture.packet.payload_preview, "GET\n", 4);
+    capture.app.protocol = APP_PROTO_HTTP;
+    snprintf(capture.app.http_method, sizeof(capture.app.http_method), "GET");
+    snprintf(capture.app.http_host, sizeof(capture.app.http_host), "example.com");
+    snprintf(capture.app.http_path, sizeof(capture.app.http_path), "/index.html");
+    capture.app_source = "packet";
+    capture.payload_enabled = 1;
+    capture.payload_limit = 3;
+
+    capture_stdout(call_output_print_packet_json, &capture, output, sizeof(output));
+
+    TEST_ASSERT_STRING_EQUAL(
+        output,
+        "{\"timestamp\":\"1710000000.123456\",\"packet_number\":7,\"transport\":{\"protocol\":"
+        "\"tcp\",\"src_ip\":\"192.168.1.25\",\"src_port\":51432,\"dst_ip\":\"93.184.216.34\","
+        "\"dst_port\":80},\"packet_length\":91,\"payload\":{\"length\":37,\"preview_length\":3,"
+        "\"truncated\":true,\"hex\":\"47 45 54\",\"ascii\":\"GET\"},\"app\":{\"protocol\":"
+        "\"http\",\"method\":\"GET\",\"host\":\"example.com\",\"path\":\"/index.html\"},"
+        "\"app_source\":\"packet\"}\n");
+}
+
+static void test_output_print_packet_json_escapes_strings(void) {
+    JsonCaptureContext capture;
+    char output[2048];
+
+    memset(&capture, 0, sizeof(capture));
+    snprintf(capture.packet.timestamp, sizeof(capture.packet.timestamp), "1.000001");
+    capture.packet.protocol = PROTO_UDP;
+    capture.packet.size = 64;
+    capture.app.protocol = APP_PROTO_TLS;
+    snprintf(capture.app.tls_sni, sizeof(capture.app.tls_sni), "evil%c]0;owned%c", 0x1b, 0x07);
+    snprintf(capture.app.tls_alpn, sizeof(capture.app.tls_alpn), "h2,\"http/1.1\"");
+    capture.app_source = "flow";
+
+    capture_stdout(call_output_print_packet_json, &capture, output, sizeof(output));
+
+    assert(strchr(output, 0x1b) == NULL);
+    TEST_ASSERT_CONTAINS(output, "\"sni\":\"evil\\u001b]0;owned\\u0007\"");
+    TEST_ASSERT_CONTAINS(output, "\"alpn\":\"h2,\\\"http/1.1\\\"\"");
+    TEST_ASSERT_CONTAINS(output, "\"app_source\":\"flow\"");
 }
 
 static void test_output_print_packet_app_handles_optional_fields(void) {
@@ -133,6 +220,8 @@ int main(void) {
     test_output_print_packet_app_accepts_protocols();
     test_output_print_flow_app_event_accepts_flow();
     test_output_escapes_terminal_control_bytes();
+    test_output_print_packet_json_matches_golden();
+    test_output_print_packet_json_escapes_strings();
     test_output_print_packet_app_handles_optional_fields();
     test_output_print_flow_app_event_handles_all_protocols();
 

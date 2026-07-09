@@ -14,6 +14,7 @@ static const char *EXPECTED_USAGE =
     "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n"
     "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n"
     "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n"
+    "       [--json] [--flush-log <always|line|exit>]\n"
     "       [--decode-app] [--reassemble] [--max-flows <number>]\n"
     "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n"
     "       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]\n"
@@ -98,7 +99,9 @@ static void test_cli_parse_args_sets_interface_ux_flags(void) {
     AppConfig config;
     char *version[] = {"MiniSniffer", "--version"};
     char *list[] = {"MiniSniffer", "--list-interfaces"};
-    char *quiet_verbose[] = {"MiniSniffer", "--quiet", "--verbose", "--no-color"};
+    char *quiet_verbose[] = {"MiniSniffer", "--quiet", "--verbose", "--no-color", "--json"};
+    char *flush_always[] = {"MiniSniffer", "--flush-log", "always"};
+    char *flush_exit[] = {"MiniSniffer", "--flush-log", "exit"};
 
     config_init_defaults(&config);
     assert(cli_parse_args(2, version, &config) == 0);
@@ -109,10 +112,19 @@ static void test_cli_parse_args_sets_interface_ux_flags(void) {
     assert(config.list_interfaces == true);
 
     config_init_defaults(&config);
-    assert(cli_parse_args(4, quiet_verbose, &config) == 0);
+    assert(cli_parse_args(5, quiet_verbose, &config) == 0);
     assert(config.quiet == true);
     assert(config.verbose == true);
     assert(config.color_enabled == false);
+    assert(config.json_output == true);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(3, flush_always, &config) == 0);
+    assert(config.log_flush_mode == LOG_FLUSH_ALWAYS);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(3, flush_exit, &config) == 0);
+    assert(config.log_flush_mode == LOG_FLUSH_EXIT);
 }
 
 static void test_cli_parse_args_sets_interface(void) {
@@ -497,6 +509,7 @@ static void test_cli_parse_args_rejects_all_missing_values(void) {
     char *max_flows[] = {"MiniSniffer", "--max-flows"};
     char *stream_buffer[] = {"MiniSniffer", "--stream-buffer-bytes"};
     char *flow_timeout[] = {"MiniSniffer", "--flow-timeout"};
+    char *flush_log[] = {"MiniSniffer", "--flush-log"};
 
     assert_cli_rejects(2, count);
     assert_cli_rejects(2, protocol);
@@ -516,6 +529,7 @@ static void test_cli_parse_args_rejects_all_missing_values(void) {
     assert_cli_rejects(2, max_flows);
     assert_cli_rejects(2, stream_buffer);
     assert_cli_rejects(2, flow_timeout);
+    assert_cli_rejects(2, flush_log);
 }
 
 static void test_cli_parse_args_rejects_oversized_strings(void) {
@@ -573,11 +587,13 @@ static void test_cli_parse_args_rejects_empty_and_overflow_values(void) {
     char *count[] = {"MiniSniffer", "--count", "999999999999999999999999"};
     char *timeout[] = {"MiniSniffer", "--decode-app", "--reassemble", "--flow-timeout",
                        "4294967296"};
+    char *flush_log[] = {"MiniSniffer", "--flush-log", "sometimes"};
 
     assert_cli_rejects(3, payload_text);
     assert_cli_rejects(3, payload_hex);
     assert_cli_rejects(3, count);
     assert_cli_rejects(5, timeout);
+    assert_cli_rejects(3, flush_log);
     assert(cli_parse_args(1, (char *[]){"MiniSniffer"}, NULL) != 0);
 }
 

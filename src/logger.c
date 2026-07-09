@@ -19,7 +19,8 @@ void logger_set_payload_logging(int enabled, size_t preview_limit) {
  * Legacy logger calls always open without app columns.
  */
 int logger_open(const char *path) {
-    return csv_logger_open(path, false, payload_logging_enabled, payload_logging_limit);
+    return csv_logger_open(path, false, payload_logging_enabled, payload_logging_limit,
+                           LOG_FLUSH_LINE);
 }
 
 void logger_write(const PacketInfo *info) {

@@ -19,7 +19,7 @@ static int args_requested_help(int argc, char **argv) {
 }
 
 static void print_startup_summary(const AppConfig *config) {
-    if (config == NULL || config->quiet) {
+    if (config == NULL || config->quiet || config->json_output) {
         return;
     }
 
@@ -117,7 +117,7 @@ int main(int argc, char **argv) {
 
     capture_result = capture_start(&config, &stats);
 
-    if (config.stats_mode != 0) {
+    if (config.stats_mode != 0 && !config.json_output) {
         stats_print(&stats);
     }
 

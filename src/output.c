@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "output.h"
 
@@ -45,6 +46,20 @@ static const char *app_protocol_name(AppProtocol protocol) {
     }
 }
 
+static const char *protocol_json_name(Protocol protocol) {
+    switch (protocol) {
+    case PROTO_TCP:
+        return "tcp";
+    case PROTO_UDP:
+        return "udp";
+    case PROTO_ICMP:
+        return "icmp";
+    case PROTO_OTHER:
+    default:
+        return "other";
+    }
+}
+
 static const char *transport_name(uint8_t transport_protocol) {
     if (transport_protocol == 6) {
         return "tcp";
@@ -86,6 +101,141 @@ static void print_text_field(const char *name, const char *value) {
     }
     printf(" %s=", name);
     print_escaped_text(value);
+}
+
+static void print_json_string(const char *text) {
+    const unsigned char *cursor = (const unsigned char *)text;
+
+    putchar('"');
+    if (cursor != NULL) {
+        while (*cursor != '\0') {
+            unsigned char value = *cursor;
+
+            switch (value) {
+            case '"':
+                printf("\\\"");
+                break;
+            case '\\':
+                printf("\\\\");
+                break;
+            case '\b':
+                printf("\\b");
+                break;
+            case '\f':
+                printf("\\f");
+                break;
+            case '\n':
+                printf("\\n");
+                break;
+            case '\r':
+                printf("\\r");
+                break;
+            case '\t':
+                printf("\\t");
+                break;
+            default:
+                if (value < 0x20 || value == 0x7f) {
+                    printf("\\u%04x", (unsigned int)value);
+                } else {
+                    putchar(value);
+                }
+                break;
+            }
+            cursor++;
+        }
+    }
+    putchar('"');
+}
+
+static void print_json_text_field(const char *name, const char *value) {
+    if (value == NULL || value[0] == '\0') {
+        return;
+    }
+
+    printf(",\"%s\":", name);
+    print_json_string(value);
+}
+
+static void print_json_payload_ascii(const PacketInfo *packet, size_t limit) {
+    size_t i;
+
+    putchar('"');
+    for (i = 0; i < limit; i++) {
+        unsigned char value = packet->payload_preview[i];
+
+        if (value == '"' || value == '\\') {
+            putchar('\\');
+            putchar(value);
+        } else if (value >= 0x20 && value <= 0x7e) {
+            putchar(value);
+        } else {
+            putchar('.');
+        }
+    }
+    putchar('"');
+}
+
+static void print_json_payload_hex(const PacketInfo *packet, size_t limit) {
+    size_t i;
+
+    putchar('"');
+    for (i = 0; i < limit; i++) {
+        printf("%02x", packet->payload_preview[i]);
+        if (i + 1 < limit) {
+            putchar(' ');
+        }
+    }
+    putchar('"');
+}
+
+static void print_json_app(const AppInfo *app) {
+    if (app == NULL || app->protocol == APP_PROTO_UNKNOWN) {
+        printf("null");
+        return;
+    }
+
+    printf("{\"protocol\":");
+    print_json_string(app_protocol_name(app->protocol));
+    if (app->protocol == APP_PROTO_HTTP) {
+        print_json_text_field("method", app->http_method);
+        print_json_text_field("host", app->http_host);
+        print_json_text_field("path", app->http_path);
+        print_json_text_field("version", app->http_version);
+        if (app->http_status_code != 0) {
+            printf(",\"status\":%u", (unsigned int)app->http_status_code);
+        }
+    } else if (app->protocol == APP_PROTO_DNS) {
+        print_json_text_field("query", app->dns_query_name);
+        if (app->dns_query_type != 0) {
+            printf(",\"type\":%u", (unsigned int)app->dns_query_type);
+        }
+        if (app->dns_query_class != 0) {
+            printf(",\"class\":%u", (unsigned int)app->dns_query_class);
+        }
+        printf(",\"rcode\":%u", (unsigned int)app->dns_rcode);
+    } else if (app->protocol == APP_PROTO_TLS) {
+        print_json_text_field("sni", app->tls_sni);
+        print_json_text_field("alpn", app->tls_alpn);
+        if (app->tls_record_version != 0) {
+            printf(",\"record_version\":\"0x%04x\"", (unsigned int)app->tls_record_version);
+        }
+        if (app->tls_client_version != 0) {
+            printf(",\"client_version\":\"0x%04x\"", (unsigned int)app->tls_client_version);
+        }
+    }
+    printf("}");
+}
+
+static const char *normalized_json_app_source(const AppInfo *app, const char *app_source) {
+    if (app == NULL || app->protocol == APP_PROTO_UNKNOWN) {
+        return "none";
+    }
+    if (app_source != NULL &&
+        (strcmp(app_source, "packet") == 0 || strcmp(app_source, "flow") == 0)) {
+        return app_source;
+    }
+
+    return "none";
 }
 
 /*
@@ -180,4 +330,54 @@ void output_print_flow_app_event(const FlowInfo *flow) {
     printf(":%u", (unsigned int)flow->key.b_port);
     print_flow_app_fields(&flow->app);
     printf("\n");
+}
+
+void output_print_packet_json(const PacketInfo *packet, const AppInfo *app, const char *app_source,
+                              bool payload_enabled, size_t payload_preview_limit) {
+    size_t payload_limit = 0;
+
+    if (packet == NULL) {
+        return;
+    }
+
+    printf("{\"timestamp\":");
+    print_json_string(packet->timestamp);
+    printf(",\"packet_number\":%u", packet->packet_number);
+    printf(",\"transport\":{\"protocol\":");
+    print_json_string(protocol_json_name(packet->protocol));
+    if (packet->src_ip[0] != '\0') {
+        printf(",\"src_ip\":");
+        print_json_string(packet->src_ip);
+    }
+    if (packet->has_ports != 0) {
+        printf(",\"src_port\":%u", (unsigned int)packet->src_port);
+    }
+    if (packet->dst_ip[0] != '\0') {
+        printf(",\"dst_ip\":");
+        print_json_string(packet->dst_ip);
+    }
+    if (packet->has_ports != 0) {
+        printf(",\"dst_port\":%u", (unsigned int)packet->dst_port);
+    }
+    printf("},\"packet_length\":%zu", packet->size);
+
+    if (payload_enabled && packet->has_payload != 0) {
+        payload_limit = packet->payload_preview_length;
+        if (payload_limit > payload_preview_limit) {
+            payload_limit = payload_preview_limit;
+        }
+        printf(",\"payload\":{\"length\":%zu,\"preview_length\":%zu,\"truncated\":%s,\"hex\":",
+               packet->payload_capture_length, payload_limit,
+               packet->payload_capture_length > payload_limit ? "true" : "false");
+        print_json_payload_hex(packet, payload_limit);
+        printf(",\"ascii\":");
+        print_json_payload_ascii(packet, payload_limit);
+        printf("}");
+    }
+
+    printf(",\"app\":");
+    print_json_app(app);
+    printf(",\"app_source\":");
+    print_json_string(normalized_json_app_source(app, app_source));
+    printf("}\n");
 }

@@ -118,6 +118,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
        [--protocol <tcp|udp|icmp|other>] [--port <number>]
        [--host <ipv4>] [--payload] [--payload-bytes <number>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
+       [--json] [--flush-log <always|line|exit>]
        [--decode-app] [--reassemble] [--max-flows <number>]
        [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]
        [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]
@@ -144,6 +145,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--payload-bytes <number>` | Set the payload preview length. Default is 256 bytes. Maximum is 256 bytes. |
 | `--payload-contains <text>` | Display only packets whose bounded payload decode window contains the literal text. |
 | `--payload-hex <hex>` | Display only packets whose bounded payload decode window contains the byte pattern. |
+| `--json` | Print displayed packets as JSON Lines instead of human-readable packet text. |
 | `--decode-app` | Decode packet-local HTTP, DNS, and TLS ClientHello metadata. |
 | `--reassemble` | Enable bounded TCP stream reassembly for app decoding. Requires `--decode-app`. |
 | `--max-flows <number>` | Set the maximum number of tracked TCP flows for reassembly. Default is 512; maximum is 1024. Requires `--reassemble`. |
@@ -157,6 +159,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--tls-sni <host>` | Display only decoded TLS ClientHello packets with a matching SNI hostname. Requires `--decode-app`. |
 | `--tls-alpn <protocol>` | Display only decoded TLS ClientHello packets advertising the ALPN protocol. Requires `--decode-app`. |
 | `--log <file>` | Write displayed packets to a CSV file. |
+| `--flush-log <always|line|exit>` | Control CSV flush timing. Default is `line`, preserving the current row-by-row safe behavior. |
 | `--stats` | Print displayed packet totals after capture completes. |
 
 `--count` is applied after filtering. For example, `--protocol tcp --count 10`
@@ -288,6 +291,21 @@ Ethernet, rather than interpreting another link-layer format incorrectly.
 Application metadata is escaped before terminal output. Control bytes are
 shown as `\xNN` text and cannot emit terminal control sequences.
 
+Use `--json` to print displayed packets as JSON Lines:
+
+```sh
+sudo ./MiniSniffer --json --decode-app --payload --count 5
+```
+
+Each displayed packet is one JSON object with `timestamp`, `packet_number`,
+`transport`, `packet_length`, optional `payload`, `app`, and `app_source`.
+Payload previews include bounded `length`, `preview_length`, `truncated`, `hex`,
+and `ascii` fields when `--payload` is enabled. App metadata follows the same
+packet-local or flow-derived source as text and CSV output.
+
+In JSON mode, startup, stop, flow-event, and stats text are suppressed on
+stdout so consumers can parse stdout as JSON Lines. Errors still go to stderr.
+
 ## Application Decoding Limits
 
 Without `--reassemble`, application decoding is packet-local:
@@ -346,6 +364,12 @@ timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_p
 
 `app_source` is `packet` for packet-local metadata, `flow` for stream-derived
 flow metadata, or `none` when no app metadata is available.
+
+By default, CSV logging flushes each row (`--flush-log line`), matching the
+existing safe behavior for long-running captures. `--flush-log always` is
+accepted as an explicit synonym for row flushing, and `--flush-log exit` buffers
+rows until close for higher throughput when losing the last buffered rows on
+process failure is acceptable.
 
 Text cells escape control bytes and neutralize leading spreadsheet formula
 characters before writing, so opening captured metadata in spreadsheet software
