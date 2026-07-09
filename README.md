@@ -402,6 +402,26 @@ Run static analysis with clang-tidy when available, or cppcheck when available:
 make static-check
 ```
 
+## Continuous Integration
+
+GitHub Actions workflows are included for the expected quality gates. They are
+currently configured for manual `workflow_dispatch` runs so they do not consume
+minutes on every push or pull request. Re-enable `push` and `pull_request`
+triggers when CI minutes are available.
+
+- Ubuntu builds with GCC and Clang
+- macOS builds with Clang
+- `make test`
+- `make sanitize`
+- `make format-check`
+- `make static-check`
+- LLVM coverage generation
+- CodeQL analysis for C/C++
+
+CI installs libpcap development headers on Ubuntu and Homebrew libpcap on macOS.
+Formatting and static-analysis checks may skip only when the corresponding tool
+is unavailable; if a tool is installed and finds a problem, CI should fail.
+
 Run the full suite with LLVM line and branch coverage:
 
 ```sh

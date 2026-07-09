@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang
+          - os: macos-latest
+            compiler: clang
+            cc: clang
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            clang-format \
+            clang-tidy \
+            cppcheck \
+            libpcap-dev \
+            llvm \
+            pkg-config
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install libpcap pkg-config cppcheck
+          PCAP_PREFIX="$(brew --prefix libpcap)"
+          echo "PKG_CONFIG_PATH=${PCAP_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+
+      - name: Build and run tests
+        run: make CC=${{ matrix.cc }} test
+
+      - name: Run sanitizer suite
+        run: make CC=${{ matrix.cc }} sanitize
+
+      - name: Check formatting
+        run: make CC=${{ matrix.cc }} format-check
+
+      - name: Run static analysis
+        run: make CC=${{ matrix.cc }} static-check
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libpcap-dev llvm pkg-config
+
+      - name: Generate coverage
+        run: make CC=clang LLVM_PROFDATA=llvm-profdata LLVM_COV=llvm-cov coverage
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            /tmp/minisniffer-coverage/coverage.txt
+            /tmp/minisniffer-coverage/summary.json
+            /tmp/minisniffer-coverage/*.out
+          if-no-files-found: error
