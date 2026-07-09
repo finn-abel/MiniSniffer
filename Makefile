@@ -12,6 +12,9 @@ endif
 INCLUDES = -Iinclude $(PCAP_CFLAGS)
 TEST_INCLUDES = $(INCLUDES) -Itests
 BENCH_INCLUDES = $(INCLUDES) -Ibench
+FUZZ_INCLUDES = $(INCLUDES) -Ifuzz
+FUZZ_SANITIZE_CFLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1
+FUZZ_CI_SECONDS ?= 20
 LDLIBS ?= $(PCAP_LIBS)
 ifeq ($(WITH_LIBIDN2),1)
 CFLAGS += -DMINISNIFFER_WITH_LIBIDN2
@@ -34,6 +37,12 @@ TEST_SRC = tests/test_config.c tests/test_cli.c tests/test_common.c tests/test_c
 # Add lightweight benchmark source files here.
 BENCH_SRC = bench/bench_parser.c bench/bench_app_decoder.c bench/bench_filters.c bench/bench_reassembly.c
 
+# Add libFuzzer-compatible harness source files here. Each defines exactly one
+# LLVMFuzzerTestOneInput and no main(); see fuzz/fuzz_standalone_main.c.
+FUZZ_SRC = fuzz/fuzz_parser.c fuzz/fuzz_dns.c fuzz/fuzz_http.c fuzz/fuzz_tls.c fuzz/fuzz_app_dispatch.c fuzz/fuzz_reassembly.c fuzz/fuzz_pcap_offline.c
+FUZZ_STANDALONE_MAIN_SRC = fuzz/fuzz_standalone_main.c
+FUZZ_STANDALONE_MAIN_OBJ = $(FUZZ_STANDALONE_MAIN_SRC:.c=.o)
+
 OBJ = $(SRC:.c=.o)
 
 # Source files needed for tests should not include src/main.c,
@@ -45,8 +54,11 @@ TEST_TARGETS = $(TEST_SRC:tests/%.c=%)
 TEST_OBJ = $(TEST_SRC:.c=.o)
 BENCH_TARGETS = $(BENCH_SRC:bench/%.c=%)
 BENCH_OBJ = $(BENCH_SRC:.c=.o)
-FORMAT_FILES = $(SRC) $(TEST_SRC) $(BENCH_SRC) $(wildcard include/*.h tests/*.h bench/*.h)
-STATIC_FILES = $(SRC) $(TEST_SRC) $(BENCH_SRC)
+FUZZ_TARGETS = $(FUZZ_SRC:fuzz/%.c=%)
+FUZZ_SMOKE_TARGETS = $(addsuffix _smoke,$(FUZZ_TARGETS))
+FUZZ_OBJ = $(FUZZ_SRC:.c=.o)
+FORMAT_FILES = $(SRC) $(TEST_SRC) $(BENCH_SRC) $(FUZZ_SRC) $(FUZZ_STANDALONE_MAIN_SRC) $(wildcard include/*.h tests/*.h bench/*.h fuzz/*.h)
+STATIC_FILES = $(SRC) $(TEST_SRC) $(BENCH_SRC) $(FUZZ_SRC) $(FUZZ_STANDALONE_MAIN_SRC)
 
 all: $(TARGET)
 
@@ -59,6 +71,9 @@ tests/%.o: tests/%.c
 bench/%.o: bench/%.c
 	$(CC) $(CFLAGS) $(BENCH_INCLUDES) -c $< -o $@
 
+fuzz/%.o: fuzz/%.c
+	$(CC) $(CFLAGS) $(FUZZ_INCLUDES) -c $< -o $@
+
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
@@ -69,6 +84,16 @@ bench/%.o: bench/%.c
 # with the generic tests/%.o rule above for a target of the same name.
 $(BENCH_TARGETS): %: bench/%.o $(TEST_SUPPORT_OBJ)
 	$(CC) $(CFLAGS) $(BENCH_INCLUDES) -o $@ $^ $(LDLIBS)
+
+# Real libFuzzer binaries: no custom main, since -fsanitize=fuzzer supplies
+# its own via the linked runtime. Built by fuzz-build.
+$(FUZZ_TARGETS): %: fuzz/%.o $(TEST_SUPPORT_OBJ)
+	$(CC) $(CFLAGS) $(FUZZ_INCLUDES) -o $@ $^ $(LDLIBS)
+
+# Standalone replay binaries: identical harness object, linked with our own
+# main instead of a libFuzzer runtime. Built by fuzz-smoke.
+$(FUZZ_SMOKE_TARGETS): %_smoke: fuzz/%.o $(FUZZ_STANDALONE_MAIN_OBJ) $(TEST_SUPPORT_OBJ)
+	$(CC) $(CFLAGS) $(FUZZ_INCLUDES) -o $@ $^ $(LDLIBS)
 
 test: $(TEST_TARGETS)
 	@set -e; \
@@ -85,6 +110,53 @@ bench: $(BENCH_TARGETS)
 		echo "Running $$b..."; \
 		./$$b; \
 		echo ""; \
+	done; \
+	$(MAKE) clean
+
+# Builds real libFuzzer binaries (fuzz_parser, fuzz_dns, ...) and leaves them
+# in place for interactive fuzzing, e.g.:
+#   ./fuzz_parser -max_total_time=300 fuzz/corpus/parser
+# Skips gracefully, rather than failing the build, when $(CC) has no linked
+# libFuzzer runtime (this is common outside Linux clang+llvm toolchains).
+fuzz-build:
+	@if printf 'int LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n){(void)d;(void)n;return 0;}\n' | \
+	   $(CC) -x c -fsanitize=fuzzer -o /tmp/minisniffer_fuzzer_probe - >/dev/null 2>&1; then \
+		rm -f /tmp/minisniffer_fuzzer_probe; \
+		$(MAKE) $(FUZZ_TARGETS) CFLAGS='$(CFLAGS) -fsanitize=fuzzer,address,undefined'; \
+	else \
+		rm -f /tmp/minisniffer_fuzzer_probe; \
+		echo "fuzz-build: skipped; $(CC) has no linked libFuzzer runtime for -fsanitize=fuzzer"; \
+		echo "fuzz-build: install clang+llvm (Linux) or a full Xcode install (macOS) to enable it"; \
+	fi
+
+# Short, deterministic smoke check: replays every seed corpus file once
+# through each harness under AddressSanitizer/UndefinedBehaviorSanitizer,
+# using fuzz/fuzz_standalone_main.c instead of a real libFuzzer runtime, so
+# this works even on toolchains fuzz-build has to skip.
+fuzz-smoke:
+	$(MAKE) $(FUZZ_SMOKE_TARGETS) CFLAGS='$(CFLAGS) $(FUZZ_SANITIZE_CFLAGS)'
+	@set -e; \
+	for target in $(FUZZ_TARGETS); do \
+		corpus_dir="fuzz/corpus/$${target#fuzz_}"; \
+		echo "Running $${target}_smoke over $$corpus_dir..."; \
+		./$${target}_smoke "$$corpus_dir"/*; \
+		echo ""; \
+	done; \
+	$(MAKE) clean
+
+# Brief bounded real fuzzing run for CI: a few seconds per target against the
+# seed corpus, using -fsanitize=fuzzer when fuzz-build succeeded, or a no-op
+# skip message otherwise. Not a substitute for a long-running fuzzing setup.
+fuzz-ci: fuzz-build
+	@set -e; \
+	for target in $(FUZZ_TARGETS); do \
+		if [ -x ./$$target ]; then \
+			echo "Fuzzing $$target for $(FUZZ_CI_SECONDS)s..."; \
+			./$$target -max_total_time=$(FUZZ_CI_SECONDS) -max_len=4096 \
+				fuzz/corpus/$${target#fuzz_}; \
+		else \
+			echo "Skipping $$target (not built; libFuzzer unsupported)"; \
+		fi; \
 	done; \
 	$(MAKE) clean
 
@@ -147,8 +219,9 @@ coverage:
 	$(MAKE) clean
 
 clean:
-	rm -f $(OBJ) $(TEST_SUPPORT_OBJ) $(TEST_OBJ) $(BENCH_OBJ) $(TARGET) $(TEST_TARGETS) $(BENCH_TARGETS)
-	rm -rf *.dSYM tests/*.dSYM bench/*.dSYM
+	rm -f $(OBJ) $(TEST_SUPPORT_OBJ) $(TEST_OBJ) $(BENCH_OBJ) $(FUZZ_OBJ) $(FUZZ_STANDALONE_MAIN_OBJ) \
+		$(TARGET) $(TEST_TARGETS) $(BENCH_TARGETS) $(FUZZ_TARGETS) $(FUZZ_SMOKE_TARGETS)
+	rm -rf *.dSYM tests/*.dSYM bench/*.dSYM fuzz/*.dSYM
 
 run: $(TARGET)
 	./$(TARGET)
@@ -188,4 +261,4 @@ install: $(TARGET)
 uninstall:
 	rm -f '$(DESTDIR)$(BINDIR)/$(TARGET)'
 
-.PHONY: all bench check clean coverage format format-check install run sanitize static-check test uninstall
+.PHONY: all bench check clean coverage format format-check fuzz-build fuzz-ci fuzz-smoke install run sanitize static-check test uninstall

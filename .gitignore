@@ -12,6 +12,19 @@ MiniSniffer
 *.pcap
 *.csv
 
+# Fuzzing seed corpus files are intentionally committed even though some use
+# extensions ignored above for runtime capture output (e.g. *.pcap).
+!/fuzz/corpus/**
+
+# Fuzzer binaries (make fuzz-build leaves these in place for interactive use;
+# make fuzz-smoke and fuzz-ci clean up automatically) and libFuzzer crash
+# artifacts written to the working directory when a bug is found.
+/fuzz_*
+crash-*
+oom-*
+leak-*
+timeout-*
+
 # OS/editor files
 .DS_Store
 .vscode/

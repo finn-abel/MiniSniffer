@@ -37,6 +37,9 @@ writes CSV logs, and can report capture statistics when the run completes.
 - Unit tests for the core modules
 - Lightweight benchmark targets for the parser, app decoders, filters, and
   TCP reassembly
+- libFuzzer-compatible fuzzing harnesses and a seed corpus for the parser,
+  DNS, HTTP, TLS, app dispatch, TCP stream reassembly, and offline pcap
+  ingestion
 
 ## Safety and Scope
 
@@ -686,6 +689,65 @@ framework. `make bench` builds and runs `bench_parser`, `bench_app_decoder`
 (HTTP, DNS, TLS, and signature-sniffed decoding), `bench_filters`, and
 `bench_reassembly`, then runs `make clean` afterward, matching `make test`.
 
+## Fuzzing
+
+Fuzzing harnesses live under `fuzz/` for the parser, DNS (raw UDP,
+TCP-framed, and mDNS decode paths), HTTP, TLS ClientHello, app-protocol
+dispatch, TCP stream reassembly, and offline pcap ingestion. Each harness
+exposes the standard libFuzzer entry point:
+
+```c
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
+```
+
+Every harness object links two ways:
+
+- With `-fsanitize=fuzzer,address,undefined`, as a real libFuzzer binary that
+  performs coverage-guided mutation (`make fuzz-build`).
+- With `fuzz/fuzz_standalone_main.c` instead, using only
+  `-fsanitize=address,undefined`, producing a `<target>_smoke` binary that
+  replays a fixed list of files once each. This works even on toolchains
+  without a linked libFuzzer runtime (for example, a bare Xcode Command Line
+  Tools install on macOS), so smoke testing never requires installing
+  anything beyond a working C compiler.
+
+No harness requires root or a live network interface: the pcap harness feeds
+fuzz bytes to libpcap through `fmemopen` as an in-memory offline savefile
+instead of opening an interface or touching disk, and the reassembly harness
+drives `tcp_reassembly_process_segment` directly against one in-process
+`TcpReassemblyDirection` rather than a live TCP flow.
+
+A small seed corpus lives under `fuzz/corpus/<target>/`, derived from the
+same fixtures the unit tests use (`tests/fixtures/app_fixtures.h`), plus a
+handful of hand-built truncated and malformed variants and a minimal
+two-packet `.pcap` file.
+
+Build and run every fuzz target once against its seed corpus under
+AddressSanitizer/UndefinedBehaviorSanitizer:
+
+```sh
+make fuzz-smoke
+```
+
+Build the real libFuzzer binaries. This is skipped with a message, rather
+than a hard failure, on toolchains without a linked libFuzzer runtime:
+
+```sh
+make fuzz-build
+```
+
+Run a brief, bounded coverage-guided session per target, the same command CI
+uses. Defaults to 20 seconds per target; override with `FUZZ_CI_SECONDS`:
+
+```sh
+make fuzz-ci
+```
+
+`fuzz-smoke` and `fuzz-ci` both run `make clean` afterward, matching `make
+test` and `make bench`. `fuzz-build` leaves its binaries in place instead, for
+interactive fuzzing beyond the bounded CI run, such as
+`./fuzz_parser -max_total_time=60 fuzz/corpus/parser`.
+
 ## Continuous Integration
 
 GitHub Actions workflows are included for the expected quality gates. They are
@@ -701,10 +763,17 @@ triggers when CI minutes are available.
 - `make static-check`
 - LLVM coverage generation
 - CodeQL analysis for C/C++
+- `make fuzz-smoke` and a brief bounded `make fuzz-ci` run per fuzz target
 
 CI installs libpcap development headers on Ubuntu and Homebrew libpcap on macOS.
 Formatting and static-analysis checks may skip only when the corresponding tool
 is unavailable; if a tool is installed and finds a problem, CI should fail.
+
+The dedicated `fuzz` CI job installs `clang` and `llvm` (for the libFuzzer
+runtime) and runs `make CC=clang fuzz-smoke` followed by
+`make CC=clang FUZZ_CI_SECONDS=20 fuzz-ci`; any crash, OOM, leak, or timeout
+artifact left behind by a fuzz session is uploaded so it can be downloaded and
+reproduced locally.
 
 Run the full suite with LLVM line and branch coverage:
 
@@ -800,8 +869,9 @@ include/          Public headers
 src/              MiniSniffer implementation
 tests/            Unit tests
 bench/            Lightweight local benchmarks
+fuzz/             Fuzzing harnesses, seed corpus, and standalone smoke driver
 docs/             Architecture and project documentation
-Makefile          Build, test, bench, check, install, and clean targets
+Makefile          Build, test, bench, fuzz, check, install, and clean targets
 README.md         Project documentation
 ```
 
@@ -863,6 +933,11 @@ Important modules:
 - `pcap_stats` (packets received/dropped/interface-dropped) is only queried
   for live captures; it is not meaningful for offline reads and is not
   supported on every platform.
+- CI fuzzing (`make fuzz-ci`) runs a brief bounded session per target
+  (default 20 seconds, via `FUZZ_CI_SECONDS`); it is a regression smoke net,
+  not a long-running continuous fuzzing campaign. `make fuzz-build` itself
+  depends on the local toolchain having a linked libFuzzer runtime and skips
+  with a message otherwise.
 - HTTP Host, DNS query, and TLS SNI filters default to normalized domain
   matching: ASCII case-insensitive comparison with one trailing root dot
   ignored. Exact matching is available at runtime; IDNA matching requires a

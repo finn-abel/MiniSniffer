@@ -238,6 +238,55 @@ them, then runs `make clean`, mirroring `make test`. These are meant to catch
 gross regressions or compare before/after changes locally, not to replace
 proper profiling.
 
+### Fuzzing
+
+`fuzz/` holds libFuzzer-compatible harnesses for the parser (`fuzz_parser.c`,
+selecting a datalink type from the first input byte), DNS (`fuzz_dns.c`,
+selecting among raw UDP, TCP-framed, and mDNS decode paths), HTTP
+(`fuzz_http.c`), TLS ClientHello (`fuzz_tls.c`), app-protocol dispatch
+(`fuzz_app_dispatch.c`, exercising both `app_decode_buffer` and
+`app_decode_packet` with a fuzzed preferred protocol, transport, and ports),
+TCP stream reassembly (`fuzz_reassembly.c`, replaying a sequence of
+length-prefixed segments into one persistent `TcpReassemblyDirection` so gaps,
+overlaps, and retransmissions spanning multiple segments are reachable), and
+offline pcap ingestion (`fuzz_pcap_offline.c`, feeding the entire fuzz input to
+libpcap as an in-memory savefile via `fmemopen`/`pcap_fopen_offline`, then
+driving `pcap_next_ex` and `parser_parse_packet_with_datalink` in a bounded
+loop). Every harness implements the standard
+`LLVMFuzzerTestOneInput(data, size)` entry point declared once in
+`fuzz/fuzz_common.h`.
+
+Each harness object links two different ways from the same source:
+
+- With `-fsanitize=fuzzer,address,undefined`, producing a real coverage-guided
+  libFuzzer binary (`make fuzz-build`).
+- With `fuzz/fuzz_standalone_main.c` instead of libFuzzer's own `main`, using
+  only `-fsanitize=address,undefined`, producing a `<target>_smoke` binary
+  that reads a list of files from `argv` and replays each through
+  `LLVMFuzzerTestOneInput` once. This exists because not every toolchain ships
+  a linked libFuzzer runtime (for example, a bare Xcode Command Line Tools
+  install on macOS lacks `libclang_rt.fuzzer_osx.a`); `make fuzz-smoke` always
+  works on such toolchains, while `make fuzz-build` probes for
+  `-fsanitize=fuzzer` support first and degrades to a skip message rather than
+  a hard failure when it is unavailable.
+
+Neither linking mode requires root or a live network interface. The pcap
+harness never opens a real capture device — `fmemopen` turns the fuzz bytes
+into a `FILE *` that `pcap_fopen_offline` reads as a savefile, matching the
+same offline-read code path `capture.c` uses for `--read`. The reassembly
+harness calls `tcp_reassembly_process_segment` directly against one
+in-process `TcpReassemblyDirection`, with no socket, flow table, or live TCP
+connection involved.
+
+A seed corpus lives under `fuzz/corpus/<target>/`, derived from the same
+fixture bytes the unit tests use (`tests/fixtures/app_fixtures.h`), plus
+hand-built truncated and malformed variants and a minimal two-packet `.pcap`
+file for the offline-ingestion harness. `make fuzz-ci` runs a short bounded
+libFuzzer session (`FUZZ_CI_SECONDS`, default 20 seconds) per target against
+that corpus, matching the job CI runs. Both `fuzz-smoke` and `fuzz-ci` run
+`make clean` afterward, mirroring `make test` and `make bench`; `fuzz-build`
+leaves its binaries in place for interactive fuzzing beyond the bounded CI run.
+
 ## Safety and Scope
 
 MiniSniffer is for learning, local diagnostics, and authorized network
@@ -276,3 +325,7 @@ network tool.
 - Parser failures are skipped and counted rather than aborting capture
 - `pcap_stats` is only queried for live captures and only when the platform's
   libpcap driver supports it
+- CI fuzzing (`make fuzz-ci`) is a brief bounded session per target (default
+  20s via `FUZZ_CI_SECONDS`), a regression smoke net rather than a
+  long-running continuous fuzzing campaign; `make fuzz-build` itself skips
+  with a message on toolchains without a linked libFuzzer runtime
