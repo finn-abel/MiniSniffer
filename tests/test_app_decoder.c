@@ -222,6 +222,37 @@ static void test_app_decode_packet_rejects_invalid_payload_views(void) {
     assert(app_decode_packet(&packet, NULL) == APP_DECODE_NO_MATCH);
 }
 
+static void test_app_decode_status_mapping(void) {
+    PacketInfo packet =
+        make_payload_packet(PROTO_TCP, 50000, 80, HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1);
+    AppInfo info;
+    AppDecodeResult result;
+
+    result = app_decode_packet(&packet, &info);
+    assert(result == APP_DECODE_OK);
+    assert(app_decode_status_from_result(result, &packet, &info) == APP_DECODE_STATUS_DECODED);
+
+    packet.payload = HTTP_NO_MATCH;
+    packet.payload_capture_length = sizeof(HTTP_NO_MATCH) - 1;
+    packet.payload_decode_length = sizeof(HTTP_NO_MATCH) - 1;
+    result = app_decode_packet(&packet, &info);
+    assert(result == APP_DECODE_MALFORMED);
+    assert(app_decode_status_from_result(result, &packet, &info) == APP_DECODE_STATUS_MALFORMED);
+
+    packet = make_payload_packet(PROTO_TCP, 50000, 80, (const uint8_t *)"GET /", 5);
+    result = app_decode_packet(&packet, &info);
+    assert(result == APP_DECODE_NEED_MORE);
+    assert(app_decode_status_from_result(result, &packet, &info) == APP_DECODE_STATUS_NEED_MORE);
+    packet.payload_capture_length = 100;
+    packet.payload_decode_length = 5;
+    assert(app_decode_status_from_result(result, &packet, &info) == APP_DECODE_STATUS_TRUNCATED);
+
+    memset(&packet, 0, sizeof(packet));
+    result = app_decode_packet(&packet, &info);
+    assert(result == APP_DECODE_NO_MATCH);
+    assert(app_decode_status_from_result(result, &packet, &info) == APP_DECODE_STATUS_NO_MATCH);
+}
+
 static void test_app_decode_stream_uses_hints_and_fallback(void) {
     uint8_t dns_frame[sizeof(DNS_A_QUERY) + 2];
     PacketInfo packet;
@@ -276,6 +307,7 @@ int main(void) {
     test_app_decode_packet_sniffs_signatures_without_ports();
     test_app_decode_packet_uses_tls_ports();
     test_app_decode_packet_rejects_invalid_payload_views();
+    test_app_decode_status_mapping();
     test_app_decode_stream_uses_hints_and_fallback();
 
     printf("All app decoder tests passed.\n");

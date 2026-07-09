@@ -53,6 +53,7 @@ typedef struct {
     uint64_t packet_count;
     uint64_t byte_count;
     AppInfo app;
+    AppDecodeStatus app_decode_status;
     bool app_classified;
     bool app_event_printed;
     size_t stream_buffer_bytes;

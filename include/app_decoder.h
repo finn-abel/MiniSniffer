@@ -25,6 +25,9 @@ typedef enum {
  */
 AppDecodeResult app_decode_packet(const PacketInfo *packet, AppInfo *out);
 
+AppDecodeStatus app_decode_status_from_result(AppDecodeResult result, const PacketInfo *packet,
+                                              const AppInfo *app);
+
 /*
  * Decodes application metadata from an arbitrary byte buffer.
  * preferred can force one protocol or APP_PROTO_UNKNOWN to sniff signatures.

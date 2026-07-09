@@ -22,6 +22,15 @@ typedef enum { PROTO_TCP, PROTO_UDP, PROTO_ICMP, PROTO_OTHER } Protocol;
  */
 typedef enum { APP_PROTO_UNKNOWN = 0, APP_PROTO_HTTP, APP_PROTO_DNS, APP_PROTO_TLS } AppProtocol;
 
+typedef enum {
+    APP_DECODE_STATUS_NOT_RUN = 0,
+    APP_DECODE_STATUS_NO_MATCH,
+    APP_DECODE_STATUS_NEED_MORE,
+    APP_DECODE_STATUS_MALFORMED,
+    APP_DECODE_STATUS_TRUNCATED,
+    APP_DECODE_STATUS_DECODED
+} AppDecodeStatus;
+
 #define MINISNIFFER_APP_SUMMARY_LEN 128
 #define MINISNIFFER_TLS_ALPN_LEN 256
 
@@ -107,6 +116,7 @@ typedef struct {
     size_t payload_preview_length;
     unsigned char payload_preview[MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES];
 
+    AppDecodeStatus app_decode_status;
     AppInfo app;
 } PacketInfo;
 
@@ -129,6 +139,12 @@ typedef struct {
     uint32_t ipv4_fragments_expired;
     uint32_t ipv4_fragments_malformed;
     uint32_t ipv4_fragments_dropped;
+
+    uint32_t app_decode_no_match;
+    uint32_t app_decode_need_more;
+    uint32_t app_decode_malformed;
+    uint32_t app_decode_truncated;
+    uint32_t app_decode_decoded;
 } PacketStats;
 
 /*
@@ -143,6 +159,8 @@ const char *protocol_to_string(Protocol protocol);
  * Returns non-zero when text does not name a supported protocol.
  */
 int protocol_from_string(const char *text, Protocol *protocol);
+
+const char *app_decode_status_to_string(AppDecodeStatus status);
 
 /*
  * Prints one readable packet summary line.

@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app_http.h"
+#include "app_dns.h"
 #include "app_tls.h"
 #include "filters.h"
 #include "fixtures/app_fixtures.h"
@@ -36,6 +37,13 @@ static AppInfo make_tls_app(void) {
     assert(app_tls_decode_client_hello(TLS_CLIENT_HELLO_SNI_ALPN, sizeof(TLS_CLIENT_HELLO_SNI_ALPN),
                                        &app) == APP_DECODE_OK);
 
+    return app;
+}
+
+static AppInfo make_dns_app(void) {
+    AppInfo app;
+
+    assert(app_dns_decode_udp(DNS_A_QUERY, sizeof(DNS_A_QUERY), &app) == APP_DECODE_OK);
     return app;
 }
 
@@ -173,6 +181,41 @@ static void test_domain_filters_are_case_insensitive(void) {
     context.flow_is_classified = false;
 
     assert(filters_match(&config, &context));
+
+    config.domain_match_mode = DOMAIN_MATCH_EXACT;
+    assert(!filters_match(&config, &context));
+    snprintf(config.filter_http_host, sizeof(config.filter_http_host), "example.com");
+    assert(filters_match(&config, &context));
+}
+
+static void test_domain_filters_apply_to_dns_and_tls(void) {
+    AppConfig config;
+    PacketInfo packet = make_packet();
+    AppInfo app;
+    FilterContext context;
+
+    memset(&context, 0, sizeof(context));
+    context.packet = &packet;
+    config_init_defaults(&config);
+
+    app = make_dns_app();
+    context.packet_app = &app;
+    config.filter_dns_query_enabled = true;
+    snprintf(app.dns_query_name, sizeof(app.dns_query_name), "Example.COM.");
+    snprintf(config.filter_dns_query, sizeof(config.filter_dns_query), "example.com");
+    assert(filters_match(&config, &context));
+    config.domain_match_mode = DOMAIN_MATCH_EXACT;
+    assert(!filters_match(&config, &context));
+
+    config_init_defaults(&config);
+    app = make_tls_app();
+    context.packet_app = &app;
+    config.filter_tls_sni_enabled = true;
+    snprintf(app.tls_sni, sizeof(app.tls_sni), "Example.COM.");
+    snprintf(config.filter_tls_sni, sizeof(config.filter_tls_sni), "example.com");
+    assert(filters_match(&config, &context));
+    config.domain_match_mode = DOMAIN_MATCH_EXACT;
+    assert(!filters_match(&config, &context));
 }
 
 static void test_filters_reject_invalid_contexts(void) {
@@ -313,6 +356,7 @@ int main(void) {
     test_reassembly_mode_classifying_packet_does_not_match_yet();
     test_filters_fail_without_app_data();
     test_domain_filters_are_case_insensitive();
+    test_domain_filters_apply_to_dns_and_tls();
     test_filters_reject_invalid_contexts();
     test_transport_and_payload_filter_failures();
     test_app_filter_mismatch_paths();

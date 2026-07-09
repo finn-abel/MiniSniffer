@@ -62,6 +62,24 @@ int protocol_from_string(const char *text, Protocol *protocol) {
     return 1;
 }
 
+const char *app_decode_status_to_string(AppDecodeStatus status) {
+    switch (status) {
+    case APP_DECODE_STATUS_NO_MATCH:
+        return "no_match";
+    case APP_DECODE_STATUS_NEED_MORE:
+        return "need_more";
+    case APP_DECODE_STATUS_MALFORMED:
+        return "malformed";
+    case APP_DECODE_STATUS_TRUNCATED:
+        return "truncated";
+    case APP_DECODE_STATUS_DECODED:
+        return "decoded";
+    case APP_DECODE_STATUS_NOT_RUN:
+    default:
+        return "not_run";
+    }
+}
+
 void packet_info_print(const PacketInfo *info) {
     if (info == NULL) {
         return;

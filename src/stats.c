@@ -35,6 +35,18 @@ void stats_update(PacketStats *stats, const PacketInfo *info) {
     } else {
         stats->other_packets++;
     }
+
+    if (info->app_decode_status == APP_DECODE_STATUS_NO_MATCH) {
+        stats->app_decode_no_match++;
+    } else if (info->app_decode_status == APP_DECODE_STATUS_NEED_MORE) {
+        stats->app_decode_need_more++;
+    } else if (info->app_decode_status == APP_DECODE_STATUS_MALFORMED) {
+        stats->app_decode_malformed++;
+    } else if (info->app_decode_status == APP_DECODE_STATUS_TRUNCATED) {
+        stats->app_decode_truncated++;
+    } else if (info->app_decode_status == APP_DECODE_STATUS_DECODED) {
+        stats->app_decode_decoded++;
+    }
 }
 
 /*
@@ -64,4 +76,9 @@ void stats_print(const PacketStats *stats) {
     printf("IPv4 fragments expired: %u\n", stats->ipv4_fragments_expired);
     printf("IPv4 fragments malformed: %u\n", stats->ipv4_fragments_malformed);
     printf("IPv4 fragments dropped: %u\n", stats->ipv4_fragments_dropped);
+    printf("App decode no_match: %u\n", stats->app_decode_no_match);
+    printf("App decode need_more: %u\n", stats->app_decode_need_more);
+    printf("App decode malformed: %u\n", stats->app_decode_malformed);
+    printf("App decode truncated: %u\n", stats->app_decode_truncated);
+    printf("App decode decoded: %u\n", stats->app_decode_decoded);
 }

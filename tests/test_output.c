@@ -47,6 +47,10 @@ static void call_output_print_packet_app(void *context) {
     output_print_packet_app((const AppInfo *)context);
 }
 
+static void call_output_print_packet_app_status(void *context) {
+    output_print_packet_app_status(APP_DECODE_STATUS_DECODED, (const AppInfo *)context);
+}
+
 static void call_output_print_packet_json(void *context) {
     JsonCaptureContext *capture = context;
 
@@ -113,6 +117,19 @@ static void test_output_escapes_terminal_control_bytes(void) {
     assert(strstr(output, "evil\\x1b]0;owned\\x07") != NULL);
 }
 
+static void test_output_print_packet_app_status(void) {
+    AppInfo app;
+    char output[512];
+
+    memset(&app, 0, sizeof(app));
+    output_print_packet_app_status(APP_DECODE_STATUS_NO_MATCH, NULL);
+    app.protocol = APP_PROTO_HTTP;
+    snprintf(app.http_method, sizeof(app.http_method), "GET");
+    snprintf(app.http_host, sizeof(app.http_host), "example.com");
+    capture_stdout(call_output_print_packet_app_status, &app, output, sizeof(output));
+    TEST_ASSERT_CONTAINS(output, "app: status=decoded protocol=http method=GET host=example.com");
+}
+
 static void test_output_print_packet_json_matches_golden(void) {
     JsonCaptureContext capture;
     char output[2048];
@@ -130,6 +147,7 @@ static void test_output_print_packet_json_matches_golden(void) {
     capture.packet.has_payload = 1;
     capture.packet.payload_capture_length = 37;
     capture.packet.payload_preview_length = 4;
+    capture.packet.app_decode_status = APP_DECODE_STATUS_DECODED;
     memcpy(capture.packet.payload_preview, "GET\n", 4);
     capture.app.protocol = APP_PROTO_HTTP;
     snprintf(capture.app.http_method, sizeof(capture.app.http_method), "GET");
@@ -147,8 +165,8 @@ static void test_output_print_packet_json_matches_golden(void) {
         "\"tcp\",\"src_ip\":\"192.168.1.25\",\"src_port\":51432,\"dst_ip\":\"93.184.216.34\","
         "\"dst_port\":80},\"packet_length\":91,\"payload\":{\"length\":37,\"preview_length\":3,"
         "\"truncated\":true,\"hex\":\"47 45 54\",\"ascii\":\"GET\"},\"app\":{\"protocol\":"
-        "\"http\",\"method\":\"GET\",\"host\":\"example.com\",\"path\":\"/index.html\"},"
-        "\"app_source\":\"packet\"}\n");
+        "\"http\",\"method\":\"GET\",\"host\":\"example.com\",\"path\":\"/index.html\"},\"app_"
+        "decode_status\":\"decoded\",\"app_source\":\"packet\"}\n");
 }
 
 static void test_output_print_packet_json_escapes_strings(void) {
@@ -160,6 +178,7 @@ static void test_output_print_packet_json_escapes_strings(void) {
     capture.packet.protocol = PROTO_UDP;
     capture.packet.size = 64;
     capture.app.protocol = APP_PROTO_TLS;
+    capture.packet.app_decode_status = APP_DECODE_STATUS_MALFORMED;
     snprintf(capture.app.tls_sni, sizeof(capture.app.tls_sni), "evil%c]0;owned%c", 0x1b, 0x07);
     snprintf(capture.app.tls_alpn, sizeof(capture.app.tls_alpn), "h2,\"http/1.1\"");
     capture.app_source = "flow";
@@ -169,6 +188,7 @@ static void test_output_print_packet_json_escapes_strings(void) {
     assert(strchr(output, 0x1b) == NULL);
     TEST_ASSERT_CONTAINS(output, "\"sni\":\"evil\\u001b]0;owned\\u0007\"");
     TEST_ASSERT_CONTAINS(output, "\"alpn\":\"h2,\\\"http/1.1\\\"\"");
+    TEST_ASSERT_CONTAINS(output, "\"app_decode_status\":\"malformed\"");
     TEST_ASSERT_CONTAINS(output, "\"app_source\":\"flow\"");
 }
 
@@ -227,6 +247,7 @@ int main(void) {
     test_output_print_packet_app_accepts_protocols();
     test_output_print_flow_app_event_accepts_flow();
     test_output_escapes_terminal_control_bytes();
+    test_output_print_packet_app_status();
     test_output_print_packet_json_matches_golden();
     test_output_print_packet_json_escapes_strings();
     test_output_print_packet_app_handles_optional_fields();

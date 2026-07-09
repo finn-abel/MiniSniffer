@@ -1,4 +1,8 @@
 #include <string.h>
+#ifdef MINISNIFFER_WITH_LIBIDN2
+#include <stdlib.h>
+#include <idn2.h>
+#endif
 
 #include "filters.h"
 
@@ -116,8 +120,7 @@ static unsigned char ascii_lower(unsigned char value) {
     return value >= 'A' && value <= 'Z' ? (unsigned char)(value + ('a' - 'A')) : value;
 }
 
-/* DNS names, HTTP host names, and SNI names are ASCII case-insensitive. */
-static int domain_name_equals(const char *left, const char *right) {
+static int domain_name_equals_normalized(const char *left, const char *right) {
     size_t left_length;
     size_t right_length;
     size_t i;
@@ -146,6 +149,47 @@ static int domain_name_equals(const char *left, const char *right) {
     return 1;
 }
 
+#ifdef MINISNIFFER_WITH_LIBIDN2
+static int domain_name_equals_idna(const char *left, const char *right) {
+    char *left_ascii = NULL;
+    char *right_ascii = NULL;
+    int matches = 0;
+
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+    if (idn2_lookup_u8((const uint8_t *)left, (uint8_t **)&left_ascii, IDN2_NFC_INPUT) !=
+            IDN2_OK ||
+        idn2_lookup_u8((const uint8_t *)right, (uint8_t **)&right_ascii, IDN2_NFC_INPUT) !=
+            IDN2_OK) {
+        free(left_ascii);
+        free(right_ascii);
+        return 0;
+    }
+
+    matches = domain_name_equals_normalized(left_ascii, right_ascii);
+    free(left_ascii);
+    free(right_ascii);
+    return matches;
+}
+#endif
+
+static int domain_name_matches(const AppConfig *config, const char *left, const char *right) {
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+    if (config->domain_match_mode == DOMAIN_MATCH_EXACT) {
+        return strcmp(left, right) == 0;
+    }
+#ifdef MINISNIFFER_WITH_LIBIDN2
+    if (config->domain_match_mode == DOMAIN_MATCH_IDNA) {
+        return domain_name_equals_idna(left, right);
+    }
+#endif
+
+    return domain_name_equals_normalized(left, right);
+}
+
 /*
  * Checks one AppInfo object against all enabled app filters.
  * Protocol-specific filters fail when the app protocol does not match.
@@ -159,7 +203,7 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
     }
     if (config->filter_http_host_enabled &&
         (app->protocol != APP_PROTO_HTTP ||
-         !domain_name_equals(app->http_host, config->filter_http_host))) {
+         !domain_name_matches(config, app->http_host, config->filter_http_host))) {
         return 0;
     }
     if (config->filter_http_method_enabled &&
@@ -169,7 +213,7 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
     }
     if (config->filter_dns_query_enabled &&
         (app->protocol != APP_PROTO_DNS ||
-         !domain_name_equals(app->dns_query_name, config->filter_dns_query))) {
+         !domain_name_matches(config, app->dns_query_name, config->filter_dns_query))) {
         return 0;
     }
     if (config->filter_dns_type_enabled &&
@@ -178,7 +222,7 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
     }
     if (config->filter_tls_sni_enabled &&
         (app->protocol != APP_PROTO_TLS ||
-         !domain_name_equals(app->tls_sni, config->filter_tls_sni))) {
+         !domain_name_matches(config, app->tls_sni, config->filter_tls_sni))) {
         return 0;
     }
     if (config->filter_tls_alpn_enabled &&

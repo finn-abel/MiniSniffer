@@ -264,6 +264,13 @@ static void test_parser_caps_large_payload_views(void) {
     assert(info.payload_capture_length == 2200);
     assert(info.payload_decode_length == MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES);
     assert(info.payload_preview_length == MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES);
+
+    parser_set_payload_decode_limit(64);
+    assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
+    assert(info.payload_capture_length == 2200);
+    assert(info.payload_decode_length == 64);
+    assert(info.payload_preview_length == MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES);
+    parser_set_payload_decode_limit(MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES);
 }
 
 static void test_parser_rejects_invalid_transport_header_lengths(void) {

@@ -70,6 +70,14 @@ available and falls back to `-lpcap` otherwise. Override `CC`, `CFLAGS`,
 `PKG_CONFIG`, or `LDLIBS` on the `make` command line if your local toolchain
 needs custom settings.
 
+Build with optional libidn2 support to enable IDNA domain matching:
+
+```sh
+make WITH_LIBIDN2=1
+```
+
+This requires libidn2 headers and libraries to be installed locally.
+
 Install or uninstall the executable with:
 
 ```sh
@@ -119,6 +127,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
        [--count <number>] [--quiet] [--verbose] [--no-color]
        [--protocol <tcp|udp|icmp|other>] [--port <number>]
        [--host <ip>] [--payload] [--payload-bytes <number>]
+       [--payload-decode-bytes <number>] [--domain-match <mode>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
        [--read <file.pcap>] [--write <file.pcap>]
        [--json] [--flush-log <always|line|exit>]
@@ -146,6 +155,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--host <ip>` | Display only packets where the source or destination IPv4 or IPv6 address matches. |
 | `--payload` | Print a bounded hex and ASCII payload preview for displayed packets. |
 | `--payload-bytes <number>` | Set the payload preview length. Default is 256 bytes. Maximum is 256 bytes. |
+| `--payload-decode-bytes <number>` | Set the payload decode window used by payload filters and packet-local app decoders. Default is 2048 bytes. Maximum is 65535 bytes. |
 | `--payload-contains <text>` | Display only packets whose bounded payload decode window contains the literal text. |
 | `--payload-hex <hex>` | Display only packets whose bounded payload decode window contains the byte pattern. |
 | `--read <file.pcap>` | Read packets from an offline pcap file instead of live capture. Does not require interface selection or capture permissions. |
@@ -163,6 +173,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--dns-type <type>` | Display only decoded DNS packets with a matching first query type, such as `A` or `AAAA`. Requires `--decode-app`. |
 | `--tls-sni <host>` | Display only decoded TLS ClientHello packets with a matching SNI hostname. Requires `--decode-app`. |
 | `--tls-alpn <protocol>` | Display only decoded TLS ClientHello packets advertising the ALPN protocol. Requires `--decode-app`. |
+| `--domain-match <normalized|exact|idna>` | Set HTTP Host, DNS query, and TLS SNI domain matching mode. Default is `normalized`. `idna` requires `WITH_LIBIDN2=1`. |
 | `--log <file>` | Write displayed packets to a CSV file. |
 | `--flush-log <always|line|exit>` | Control CSV flush timing. Default is `line`, preserving the current row-by-row safe behavior. |
 | `--stats` | Print displayed packet totals after capture completes. |
@@ -218,7 +229,8 @@ packets do not match a port filter.
 
 Payload filters inspect the bounded payload decode window, not the smaller
 console/log preview. They do not require `--payload`; use `--payload` only when
-you also want to print or log previews.
+you also want to print or log previews. Use `--payload-decode-bytes` to tune
+the decode and filter window separately from `--payload-bytes`.
 
 Text payload filter:
 
@@ -241,6 +253,12 @@ With `--reassemble`, app filters use flow classification instead: packets before
 classification do not match, and future packets in a matching classified flow
 pass. MiniSniffer does not buffer or replay earlier packets after a flow becomes
 classified.
+
+HTTP Host, DNS query, and TLS SNI filters use normalized domain matching by
+default: ASCII case-insensitive comparison with one trailing root dot ignored on
+either side. Use `--domain-match exact` for byte-for-byte matching. Builds made
+with `make WITH_LIBIDN2=1` also accept `--domain-match idna`, which converts
+IDNA names through libidn2 before applying normalized matching.
 
 Application filter examples:
 
@@ -284,11 +302,12 @@ displayed packet:
 ```
 
 With `--decode-app`, decoded application metadata is printed below the packet
-summary when it is available:
+summary. The status is one of `no_match`, `need_more`, `malformed`,
+`truncated`, or `decoded`:
 
 ```text
 [004] TCP  192.168.1.25:51432 -> 93.184.216.34:80 size=512
-      app: http method=GET host=example.com path=/
+      app: status=decoded protocol=http method=GET host=example.com path=/
 ```
 
 With `--decode-app --reassemble`, stream-derived app metadata is printed as a
@@ -314,10 +333,10 @@ sudo ./MiniSniffer --json --decode-app --payload --count 5
 ```
 
 Each displayed packet is one JSON object with `timestamp`, `packet_number`,
-`transport`, `packet_length`, optional `payload`, `app`, and `app_source`.
-Payload previews include bounded `length`, `preview_length`, `truncated`, `hex`,
-and `ascii` fields when `--payload` is enabled. App metadata follows the same
-packet-local or flow-derived source as text and CSV output.
+`transport`, `packet_length`, optional `payload`, `app`, `app_decode_status`,
+and `app_source`. Payload previews include bounded `length`, `preview_length`,
+`truncated`, `hex`, and `ascii` fields when `--payload` is enabled. App metadata
+follows the same packet-local or flow-derived source as text and CSV output.
 
 In JSON mode, startup, stop, flow-event, and stats text are suppressed on
 stdout so consumers can parse stdout as JSON Lines. Errors still go to stderr.
@@ -412,6 +431,9 @@ timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_p
 `app_source` is `packet` for packet-local metadata, `flow` for stream-derived
 flow metadata, or `none` when no app metadata is available.
 
+CSV app rows keep the same metadata columns for compatibility. Decode status is
+reported in text, JSON, and stats output.
+
 By default, CSV logging flushes each row (`--flush-log line`), matching the
 existing safe behavior for long-running captures. `--flush-log always` is
 accepted as an explicit synonym for row flushing, and `--flush-log exit` buffers
@@ -444,6 +466,7 @@ The stats summary includes:
 - IPv4 fragments expired
 - IPv4 fragments malformed
 - IPv4 fragments dropped due to caps
+- App decode no_match, need_more, malformed, truncated, and decoded counters
 
 Stats count displayed packets only. Filtered-out packets are ignored.
 
@@ -579,8 +602,9 @@ Run `./MiniSniffer --list-interfaces` to see the names libpcap reports.
 
 MiniSniffer validates common input mistakes before capture starts, including
 unknown options, missing option values, invalid protocols, invalid ports,
-invalid IPv4 hosts, invalid app filter combinations, invalid reassembly limits,
-and log files that cannot be opened.
+invalid IP hosts, invalid app filter combinations, invalid payload and
+reassembly limits, invalid domain matching modes, and log files that cannot be
+opened.
 
 Examples:
 
@@ -590,10 +614,12 @@ Examples:
 ./MiniSniffer --protocol fake
 ./MiniSniffer --host 999.1.1.1
 ./MiniSniffer --payload-bytes 999
+./MiniSniffer --payload-decode-bytes 999999
 ./MiniSniffer --payload-hex abc
 ./MiniSniffer --reassemble
 ./MiniSniffer --decode-app --max-flows 0
 ./MiniSniffer --decode-app --stream-buffer-bytes 0
+./MiniSniffer --domain-match idna
 ./MiniSniffer --interface fake0
 ./MiniSniffer --log /bad/path/file.csv
 ```
@@ -632,13 +658,16 @@ Important modules:
 - IPv4 total length, IPv6 payload length, and UDP length fields bound transport
   payload views; link-layer padding is never treated as payload.
 - Payload display and legacy payload CSV output are bounded to 256 bytes.
-- Payload filters and packet-local app decoders inspect a bounded decode window.
+- Payload filters and packet-local app decoders inspect a bounded decode window,
+  configured separately from payload preview length.
 - IPv6 extension-header walking is conservative; fragments, ESP, truncated
   extension headers, and no-next-header packets are not decoded at transport
   or app layers.
 - App decoding is intentionally limited to cleartext HTTP/1.x metadata, DNS
   query metadata, and TLS ClientHello metadata.
 - TCP reassembly is conservative and bounded; it is not a full TCP stack.
-- HTTP Host, DNS query, and TLS SNI filters compare domain names without ASCII
-  case sensitivity and ignore one trailing root dot.
+- HTTP Host, DNS query, and TLS SNI filters default to normalized domain
+  matching: ASCII case-insensitive comparison with one trailing root dot
+  ignored. Exact matching is available at runtime; IDNA matching requires a
+  libidn2-enabled build.
 - Live capture behavior depends on libpcap support and local OS permissions.

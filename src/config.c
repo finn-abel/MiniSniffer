@@ -59,6 +59,7 @@ void config_init_defaults(AppConfig *config) {
     config->filter_tls_sni[0] = '\0';
     config->filter_tls_alpn_enabled = false;
     config->filter_tls_alpn[0] = '\0';
+    config->domain_match_mode = DOMAIN_MATCH_NORMALIZED;
     config->payload_display_enabled = 0;
     config->logging_enabled = 0;
     config->log_path[0] = '\0';

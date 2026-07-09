@@ -781,10 +781,10 @@ static void test_capture_static_helpers_and_signal_path(void) {
     print_open_live_error("en0", "Operation not permitted");
 
     memset(&flow, 0, sizeof(flow));
-    assert(!flow_decode_stream_app(NULL, FLOW_DIR_A_TO_B, &packet));
-    assert(!flow_decode_stream_app(&flow, FLOW_DIR_A_TO_B, NULL));
+    assert(!flow_decode_stream_app(NULL, FLOW_DIR_A_TO_B, &packet, NULL));
+    assert(!flow_decode_stream_app(&flow, FLOW_DIR_A_TO_B, NULL, NULL));
     packet.protocol = PROTO_UDP;
-    assert(!flow_decode_stream_app(&flow, FLOW_DIR_A_TO_B, &packet));
+    assert(!flow_decode_stream_app(&flow, FLOW_DIR_A_TO_B, &packet, NULL));
 
     packet.protocol = PROTO_TCP;
     packet.has_tcp_sequence = 1;
@@ -792,7 +792,7 @@ static void test_capture_static_helpers_and_signal_path(void) {
     packet.payload = oversized;
     packet.payload_capture_length = sizeof(oversized) - 1;
     flow.stream_buffer_bytes = 4;
-    assert(!flow_decode_stream_app(&flow, FLOW_DIR_A_TO_B, &packet));
+    assert(!flow_decode_stream_app(&flow, FLOW_DIR_A_TO_B, &packet, NULL));
     tcp_reassembly_direction_cleanup(&flow.directions[FLOW_DIR_A_TO_B].tcp);
 
     should_stop = 0;

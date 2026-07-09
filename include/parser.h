@@ -25,4 +25,10 @@ int parser_parse_packet_with_datalink(const unsigned char *packet, size_t packet
  */
 int parser_supports_datalink(int datalink_type);
 
+/*
+ * Sets the bounded payload decode window used by future parser calls.
+ * Invalid values reset to the safe default.
+ */
+void parser_set_payload_decode_limit(size_t limit);
+
 #endif

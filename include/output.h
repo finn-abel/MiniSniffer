@@ -11,6 +11,7 @@
  * UNKNOWN or NULL app info is intentionally silent.
  */
 void output_print_packet_app(const AppInfo *app);
+void output_print_packet_app_status(AppDecodeStatus status, const AppInfo *app);
 
 /*
  * Prints a flow-level app event.

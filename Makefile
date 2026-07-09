@@ -12,6 +12,10 @@ endif
 INCLUDES = -Iinclude $(PCAP_CFLAGS)
 TEST_INCLUDES = $(INCLUDES) -Itests
 LDLIBS ?= $(PCAP_LIBS)
+ifeq ($(WITH_LIBIDN2),1)
+CFLAGS += -DMINISNIFFER_WITH_LIBIDN2
+LDLIBS += -lidn2
+endif
 COVERAGE_CFLAGS = -Wall -Wextra -Werror -std=c11 -g -O0 -fprofile-instr-generate -fcoverage-mapping
 COVERAGE_DIR ?= /tmp/minisniffer-coverage
 LLVM_PROFDATA ?= xcrun llvm-profdata

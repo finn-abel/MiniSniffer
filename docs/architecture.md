@@ -31,7 +31,10 @@ bytes are present.
 
 The parser treats packet bytes as untrusted input. IPv4 total length, IPv6
 payload length, and UDP length fields bound transport payload views, and
-link-layer padding is not treated as payload.
+link-layer padding is not treated as payload. The payload preview length and
+payload decode window are separate caps: `--payload-bytes` controls text/CSV
+preview output, while `--payload-decode-bytes` controls payload filters and
+packet-local app decoder input.
 
 ### Flow and Reassembly
 
@@ -61,6 +64,11 @@ Packet-local decoding is enabled with `--decode-app`. Stream-derived decoding
 requires `--decode-app --reassemble`. MiniSniffer does not decrypt traffic.
 TLS support is limited to clear ClientHello metadata.
 
+Decoder results are reduced to stable status values for observability:
+`no_match`, `need_more`, `malformed`, `truncated`, and `decoded`. Text and JSON
+output expose the per-packet status, and stats count displayed packets by
+status.
+
 ### Filters
 
 `src/filters.c` applies configured filters with AND semantics. A packet must
@@ -85,11 +93,18 @@ Supported filters include:
 Application filters require `--decode-app`. Reassembly-related flow settings
 require `--decode-app --reassemble`.
 
+HTTP Host, DNS query, and TLS SNI filters use `--domain-match` to select
+comparison behavior. The default `normalized` mode is ASCII case-insensitive
+and ignores one trailing root dot. `exact` mode uses byte-for-byte comparison.
+`idna` mode is available only in builds compiled with `WITH_LIBIDN2=1`; it uses
+libidn2 conversion before normalized comparison.
+
 ### Output and Logger
 
 `src/output.c` prints packet summaries, bounded payload previews, decoded app
-metadata, and stream classification events. Output escapes control bytes so
-network-supplied metadata cannot emit terminal control sequences.
+metadata, app decode status, and stream classification events. Output escapes
+control bytes so network-supplied metadata cannot emit terminal control
+sequences.
 
 `src/csv_logger.c` writes displayed packets to CSV when `--log <file>` is set.
 Log files are created atomically with owner-only permissions and existing paths
@@ -101,7 +116,9 @@ formula characters.
 `src/stats.c` tracks displayed packet totals when `--stats` is enabled. Stats
 count packets after filtering, not all raw captured packets. IPv4 fragment
 counters track fragments seen, reassembled, expired, malformed, and dropped due
-to caps.
+to caps. App decode counters track displayed packet statuses for no match,
+incomplete input, malformed input, truncation by configured caps, and successful
+decodes.
 
 ## Safety and Scope
 
@@ -122,6 +139,7 @@ network tool.
 - IPv4 fragment reassembly is bounded and rejects overlaps
 - TCP and UDP ports only when enough header bytes were captured
 - Bounded payload inspection and payload display
+- Payload decode and payload preview use separate bounded windows
 - Cleartext HTTP/1.x metadata only
 - DNS query metadata only
 - TLS ClientHello metadata only

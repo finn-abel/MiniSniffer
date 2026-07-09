@@ -110,6 +110,7 @@ static void test_config_defaults_app_filters(void) {
     assert(strcmp(config.filter_tls_sni, "") == 0);
     assert(config.filter_tls_alpn_enabled == false);
     assert(strcmp(config.filter_tls_alpn, "") == 0);
+    assert(config.domain_match_mode == DOMAIN_MATCH_NORMALIZED);
 }
 
 static void test_config_init_defaults_rejects_null_input(void) {

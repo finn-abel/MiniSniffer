@@ -340,8 +340,8 @@ static void set_packet_timestamp(PacketInfo *info, const struct pcap_pkthdr *hea
              (long)header->ts.tv_usec);
 }
 
-static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction,
-                                   const PacketInfo *packet) {
+static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction, const PacketInfo *packet,
+                                   AppDecodeStatus *status) {
     TcpReassemblyDirection *tcp_state;
     TcpReassemblyResult reassembly_result;
     const uint8_t *stream_data;
@@ -352,10 +352,16 @@ static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction,
         packet->has_tcp_sequence == 0 || packet->has_payload == 0 ||
         packet->payload_capture_length == 0 || flow->app_classified ||
         direction > FLOW_DIR_B_TO_A) {
+        if (status != NULL) {
+            *status = APP_DECODE_STATUS_NO_MATCH;
+        }
         return false;
     }
 
     if (!flow_prepare_reassembly_direction(flow, direction)) {
+        if (status != NULL) {
+            *status = APP_DECODE_STATUS_MALFORMED;
+        }
         return false;
     }
     tcp_state = &flow->directions[direction].tcp;
@@ -363,19 +369,31 @@ static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction,
         tcp_reassembly_process_segment(tcp_state, packet->tcp_sequence, packet->tcp_flags,
                                        packet->payload, packet->payload_capture_length);
     if (reassembly_result == TCP_REASSEMBLY_DROPPED) {
+        if (status != NULL) {
+            *status = APP_DECODE_STATUS_TRUNCATED;
+        }
         return false;
     }
 
     stream_data = stream_buffer_data(&tcp_state->stream);
     stream_length = stream_buffer_length(&tcp_state->stream);
-    if (app_decode_stream(packet, stream_data, stream_length, &decoded) == APP_DECODE_OK &&
-        decoded.protocol != APP_PROTO_UNKNOWN) {
+    {
+        AppDecodeResult decode_result = app_decode_stream(packet, stream_data, stream_length,
+                                                          &decoded);
+        if (status != NULL) {
+            *status = app_decode_status_from_result(decode_result, packet, &decoded);
+        }
+        if (decode_result != APP_DECODE_OK || decoded.protocol == APP_PROTO_UNKNOWN) {
+            return false;
+        }
+    }
+
+    {
         flow->app = decoded;
+        flow->app_decode_status = APP_DECODE_STATUS_DECODED;
         flow->app_classified = true;
         return true;
     }
-
-    return false;
 }
 
 /*
@@ -463,6 +481,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         pcap_close(handle);
         return 1;
     }
+    parser_set_payload_decode_limit(config->payload_decode_bytes);
 
     if (!ipv4_fragment_table_init(&fragment_table, config->ipv4_fragment_max_datagrams,
                                   config->ipv4_fragment_max_bytes,
@@ -512,6 +531,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         const char *app_source = "none";
         AppInfo *filter_flow_app_ptr = NULL;
         bool flow_was_classified_before_packet = false;
+        AppDecodeStatus flow_decode_status = APP_DECODE_STATUS_NOT_RUN;
         uint64_t packet_time;
         unsigned char *assembled_packet = NULL;
         int result;
@@ -583,9 +603,11 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                 if (flow->app_classified) {
                     flow_app_ptr = &flow->app;
                     filter_flow_app_ptr = &flow->app;
+                    flow_decode_status = flow->app_decode_status;
                     app_source = "flow";
                 } else if (config->decode_app &&
-                           flow_decode_stream_app(flow, direction, effective_info)) {
+                           flow_decode_stream_app(flow, direction, effective_info,
+                                                  &flow_decode_status)) {
                     flow_app_ptr = &flow->app;
                     app_source = "flow";
                 }
@@ -596,16 +618,28 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             AppDecodeResult decode_result =
                 app_decode_packet(effective_info, &effective_info->app);
 
+            effective_info->app_decode_status =
+                app_decode_status_from_result(decode_result, effective_info, &effective_info->app);
             if (decode_result == APP_DECODE_OK &&
                 effective_info->app.protocol != APP_PROTO_UNKNOWN) {
                 packet_app_ptr = &effective_info->app;
                 app_source = "packet";
                 if (flow != NULL && !flow->app_classified) {
                     flow->app = effective_info->app;
+                    flow->app_decode_status = APP_DECODE_STATUS_DECODED;
                     flow->app_classified = true;
                     flow_app_ptr = &flow->app;
                 }
             }
+        } else {
+            effective_info->app_decode_status = APP_DECODE_STATUS_NOT_RUN;
+        }
+        if (effective_info != &info) {
+            info.app_decode_status = effective_info->app_decode_status;
+        }
+        if (info.app_decode_status == APP_DECODE_STATUS_NOT_RUN &&
+            flow_decode_status != APP_DECODE_STATUS_NOT_RUN) {
+            info.app_decode_status = flow_decode_status;
         }
 
         filter_context.packet = effective_info;
@@ -635,8 +669,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                                      config->payload_preview_bytes);
         } else {
             packet_info_print(&info);
-            if (config->decode_app && packet_app_ptr != NULL) {
-                output_print_packet_app(packet_app_ptr);
+            if (config->decode_app) {
+                output_print_packet_app_status(info.app_decode_status, packet_app_ptr);
             }
             if (config->payload_display_enabled != 0) {
                 packet_info_print_payload(&info, config->payload_preview_bytes);

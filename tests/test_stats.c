@@ -28,6 +28,11 @@ static void test_stats_init_clears_counters(void) {
     stats.ipv4_fragments_expired = 99;
     stats.ipv4_fragments_malformed = 99;
     stats.ipv4_fragments_dropped = 99;
+    stats.app_decode_no_match = 99;
+    stats.app_decode_need_more = 99;
+    stats.app_decode_malformed = 99;
+    stats.app_decode_truncated = 99;
+    stats.app_decode_decoded = 99;
 
     stats_init(&stats);
 
@@ -42,6 +47,11 @@ static void test_stats_init_clears_counters(void) {
     assert(stats.ipv4_fragments_expired == 0);
     assert(stats.ipv4_fragments_malformed == 0);
     assert(stats.ipv4_fragments_dropped == 0);
+    assert(stats.app_decode_no_match == 0);
+    assert(stats.app_decode_need_more == 0);
+    assert(stats.app_decode_malformed == 0);
+    assert(stats.app_decode_truncated == 0);
+    assert(stats.app_decode_decoded == 0);
 }
 
 static void test_stats_update_tracks_protocol_counts_and_bytes(void) {
@@ -51,6 +61,10 @@ static void test_stats_update_tracks_protocol_counts_and_bytes(void) {
     PacketInfo icmp = make_packet(PROTO_ICMP, 300);
     PacketInfo other = make_packet(PROTO_OTHER, 400);
 
+    tcp.app_decode_status = APP_DECODE_STATUS_DECODED;
+    udp.app_decode_status = APP_DECODE_STATUS_NO_MATCH;
+    icmp.app_decode_status = APP_DECODE_STATUS_NEED_MORE;
+    other.app_decode_status = APP_DECODE_STATUS_TRUNCATED;
     stats_init(&stats);
     stats_update(&stats, &tcp);
     stats_update(&stats, &udp);
@@ -63,6 +77,10 @@ static void test_stats_update_tracks_protocol_counts_and_bytes(void) {
     assert(stats.icmp_packets == 1);
     assert(stats.other_packets == 1);
     assert(stats.total_bytes == 1000);
+    assert(stats.app_decode_decoded == 1);
+    assert(stats.app_decode_no_match == 1);
+    assert(stats.app_decode_need_more == 1);
+    assert(stats.app_decode_truncated == 1);
 }
 
 static void test_stats_functions_accept_null_inputs(void) {

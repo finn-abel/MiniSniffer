@@ -325,6 +325,36 @@ void output_print_packet_app(const AppInfo *app) {
     print_app_with_prefix(app, "      app: ");
 }
 
+void output_print_packet_app_status(AppDecodeStatus status, const AppInfo *app) {
+    printf("      app: status=%s", app_decode_status_to_string(status));
+    if (app == NULL || app->protocol == APP_PROTO_UNKNOWN) {
+        printf("\n");
+        return;
+    }
+
+    if (app->protocol == APP_PROTO_HTTP) {
+        printf(" protocol=http");
+        print_text_field("method", app->http_method);
+        if (app->http_status_code != 0) {
+            printf(" status_code=%u", (unsigned int)app->http_status_code);
+        }
+        print_text_field("host", app->http_host);
+        print_text_field("path", app->http_path);
+    } else if (app->protocol == APP_PROTO_DNS) {
+        printf(" protocol=dns");
+        print_text_field("query", app->dns_query_name);
+        if (app->dns_query_type != 0) {
+            printf(" type=");
+            print_dns_type(app->dns_query_type);
+        }
+    } else if (app->protocol == APP_PROTO_TLS) {
+        printf(" protocol=tls");
+        print_text_field("sni", app->tls_sni);
+        print_text_field("alpn", app->tls_alpn);
+    }
+    printf("\n");
+}
+
 /*
  * Flow app events use the same field formatting as packet app metadata so the
  * console output does not need to be redesigned when reassembly lands.
@@ -391,6 +421,8 @@ void output_print_packet_json(const PacketInfo *packet, const AppInfo *app, cons
 
     printf(",\"app\":");
     print_json_app(app);
+    printf(",\"app_decode_status\":");
+    print_json_string(app_decode_status_to_string(packet->app_decode_status));
     printf(",\"app_source\":");
     print_json_string(normalized_json_app_source(app, app_source));
     printf("}\n");

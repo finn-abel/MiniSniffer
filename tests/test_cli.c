@@ -13,6 +13,7 @@ static const char *EXPECTED_USAGE =
     "       [--count <number>] [--quiet] [--verbose] [--no-color]\n"
     "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n"
     "       [--host <ip>] [--payload] [--payload-bytes <number>]\n"
+    "       [--payload-decode-bytes <number>] [--domain-match <mode>]\n"
     "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n"
     "       [--read <file.pcap>] [--write <file.pcap>]\n"
     "       [--json] [--flush-log <always|line|exit>]\n"
@@ -223,13 +224,15 @@ static void test_cli_parse_args_sets_stats(void) {
 
 static void test_cli_parse_args_sets_payload_display(void) {
     AppConfig config;
-    char *argv[] = {"MiniSniffer", "--payload", "--payload-bytes", "32"};
+    char *argv[] = {"MiniSniffer", "--payload", "--payload-bytes", "32",
+                    "--payload-decode-bytes", "4096"};
 
     config_init_defaults(&config);
 
-    assert(cli_parse_args(4, argv, &config) == 0);
+    assert(cli_parse_args(6, argv, &config) == 0);
     assert(config.payload_display_enabled == 1);
     assert(config.payload_preview_bytes == 32);
+    assert(config.payload_decode_bytes == 4096);
 }
 
 static void test_cli_parse_args_sets_payload_text_filter(void) {
@@ -339,6 +342,11 @@ static void test_cli_parse_args_sets_app_filters(void) {
     assert(strcmp(config.filter_tls_sni, "example.com") == 0);
     assert(config.filter_tls_alpn_enabled == true);
     assert(strcmp(config.filter_tls_alpn, "h2") == 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(4, (char *[]){"MiniSniffer", "--decode-app", "--domain-match", "exact"},
+                          &config) == 0);
+    assert(config.domain_match_mode == DOMAIN_MATCH_EXACT);
 }
 
 static void test_cli_parse_args_accepts_combined_filters(void) {
@@ -421,10 +429,14 @@ static void test_cli_parse_args_rejects_invalid_host(void) {
 static void test_cli_parse_args_rejects_invalid_payload_options(void) {
     AppConfig config;
     char *payload_bytes[] = {"MiniSniffer", "--payload-bytes", "999"};
+    char *payload_decode_bytes[] = {"MiniSniffer", "--payload-decode-bytes", "999999"};
     char *payload_hex[] = {"MiniSniffer", "--payload-hex", "abc"};
 
     config_init_defaults(&config);
     assert(cli_parse_args(3, payload_bytes, &config) != 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(3, payload_decode_bytes, &config) != 0);
 
     config_init_defaults(&config);
     assert(cli_parse_args(3, payload_hex, &config) != 0);
@@ -532,6 +544,8 @@ static void test_cli_parse_args_rejects_all_missing_values(void) {
     char *stream_buffer[] = {"MiniSniffer", "--stream-buffer-bytes"};
     char *flow_timeout[] = {"MiniSniffer", "--flow-timeout"};
     char *flush_log[] = {"MiniSniffer", "--flush-log"};
+    char *payload_decode_bytes[] = {"MiniSniffer", "--payload-decode-bytes"};
+    char *domain_match[] = {"MiniSniffer", "--domain-match"};
 
     assert_cli_rejects(2, count);
     assert_cli_rejects(2, protocol);
@@ -554,6 +568,8 @@ static void test_cli_parse_args_rejects_all_missing_values(void) {
     assert_cli_rejects(2, stream_buffer);
     assert_cli_rejects(2, flow_timeout);
     assert_cli_rejects(2, flush_log);
+    assert_cli_rejects(2, payload_decode_bytes);
+    assert_cli_rejects(2, domain_match);
 }
 
 static void test_cli_parse_args_rejects_oversized_strings(void) {
@@ -616,12 +632,18 @@ static void test_cli_parse_args_rejects_empty_and_overflow_values(void) {
     char *timeout[] = {"MiniSniffer", "--decode-app", "--reassemble", "--flow-timeout",
                        "4294967296"};
     char *flush_log[] = {"MiniSniffer", "--flush-log", "sometimes"};
+    char *domain_match[] = {"MiniSniffer", "--domain-match", "sometimes"};
+    char *domain_idna[] = {"MiniSniffer", "--domain-match", "idna"};
 
     assert_cli_rejects(3, payload_text);
     assert_cli_rejects(3, payload_hex);
     assert_cli_rejects(3, count);
     assert_cli_rejects(5, timeout);
     assert_cli_rejects(3, flush_log);
+#ifndef MINISNIFFER_WITH_LIBIDN2
+    assert_cli_rejects(3, domain_idna);
+#endif
+    assert_cli_rejects(3, domain_match);
     assert(cli_parse_args(1, (char *[]){"MiniSniffer"}, NULL) != 0);
 }
 

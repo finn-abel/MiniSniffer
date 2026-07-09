@@ -17,6 +17,7 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--count <number>] [--quiet] [--verbose] [--no-color]\n");
     fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
     fprintf(stream, "       [--host <ip>] [--payload] [--payload-bytes <number>]\n");
+    fprintf(stream, "       [--payload-decode-bytes <number>] [--domain-match <mode>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
     fprintf(stream, "       [--read <file.pcap>] [--write <file.pcap>]\n");
     fprintf(stream, "       [--json] [--flush-log <always|line|exit>]\n");
@@ -150,6 +151,13 @@ static int fail_invalid_payload_bytes(const char *program_name) {
     return 1;
 }
 
+static int fail_invalid_payload_decode_bytes(const char *program_name) {
+    fprintf(stderr, "Error: payload decode bytes must be between 1 and %u.\n",
+            (unsigned int)MINISNIFFER_MAX_PAYLOAD_DECODE_BYTES);
+    print_usage(stderr, program_name);
+    return 1;
+}
+
 static int fail_invalid_payload_text(const char *program_name) {
     fprintf(stderr, "Error: payload text filter must be between 1 and %u bytes.\n",
             (unsigned int)MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES);
@@ -221,6 +229,30 @@ static int parse_app_protocol(const char *text, AppProtocol *protocol) {
     if (strcmp(text, "tls") == 0) {
         *protocol = APP_PROTO_TLS;
         return 0;
+    }
+
+    return 1;
+}
+
+static int parse_domain_match_mode(const char *text, DomainMatchMode *mode) {
+    if (text == NULL || mode == NULL) {
+        return 1;
+    }
+    if (strcmp(text, "normalized") == 0) {
+        *mode = DOMAIN_MATCH_NORMALIZED;
+        return 0;
+    }
+    if (strcmp(text, "exact") == 0) {
+        *mode = DOMAIN_MATCH_EXACT;
+        return 0;
+    }
+    if (strcmp(text, "idna") == 0) {
+#ifdef MINISNIFFER_WITH_LIBIDN2
+        *mode = DOMAIN_MATCH_IDNA;
+        return 0;
+#else
+        return 2;
+#endif
     }
 
     return 1;
@@ -488,6 +520,34 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
                 return fail_invalid_payload_bytes(program_name);
             }
             config->payload_preview_bytes = (size_t)preview_bytes;
+            i++;
+        } else if (strcmp(argv[i], "--payload-decode-bytes") == 0) {
+            size_t decode_bytes;
+
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--payload-decode-bytes requires a value.");
+            }
+            if (parse_positive_size(argv[i + 1], &decode_bytes) != 0 ||
+                decode_bytes > MINISNIFFER_MAX_PAYLOAD_DECODE_BYTES) {
+                return fail_invalid_payload_decode_bytes(program_name);
+            }
+            config->payload_decode_bytes = decode_bytes;
+            i++;
+        } else if (strcmp(argv[i], "--domain-match") == 0) {
+            int parse_result;
+
+            if (!has_value(argc, argv, i)) {
+                return fail_with_error(program_name, "--domain-match requires a value.");
+            }
+            parse_result = parse_domain_match_mode(argv[i + 1], &config->domain_match_mode);
+            if (parse_result == 2) {
+                return fail_with_error(program_name,
+                                       "--domain-match idna requires WITH_LIBIDN2=1.");
+            }
+            if (parse_result != 0) {
+                return fail_with_error(program_name,
+                                       "--domain-match must be normalized, exact, or idna.");
+            }
             i++;
         } else if (strcmp(argv[i], "--payload-contains") == 0) {
             size_t length;

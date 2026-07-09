@@ -217,3 +217,22 @@ AppDecodeResult app_decode_stream(const PacketInfo *packet, const uint8_t *data,
 
     return app_decode_buffer(APP_PROTO_UNKNOWN, data, length, out);
 }
+
+AppDecodeStatus app_decode_status_from_result(AppDecodeResult result, const PacketInfo *packet,
+                                              const AppInfo *app) {
+    if (result == APP_DECODE_OK && app != NULL && app->protocol != APP_PROTO_UNKNOWN) {
+        return APP_DECODE_STATUS_DECODED;
+    }
+    if (result == APP_DECODE_NEED_MORE) {
+        if (packet != NULL && packet->has_payload != 0 &&
+            packet->payload_capture_length > packet->payload_decode_length) {
+            return APP_DECODE_STATUS_TRUNCATED;
+        }
+        return APP_DECODE_STATUS_NEED_MORE;
+    }
+    if (result == APP_DECODE_MALFORMED) {
+        return APP_DECODE_STATUS_MALFORMED;
+    }
+
+    return APP_DECODE_STATUS_NO_MATCH;
+}

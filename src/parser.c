@@ -41,6 +41,8 @@ typedef struct {
     int transport_reachable;
 } IPv6Transport;
 
+static size_t payload_decode_limit = MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES;
+
 /*
  * Reads a two-byte network-order integer without assuming packet alignment.
  * Raw packet pointers may not be aligned enough for direct integer access.
@@ -165,8 +167,8 @@ static void parse_payload(const unsigned char *packet, size_t packet_len, size_t
     info->payload = packet + payload_offset;
     info->payload_capture_length = available;
     info->payload_decode_length = available;
-    if (info->payload_decode_length > MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES) {
-        info->payload_decode_length = MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES;
+    if (info->payload_decode_length > payload_decode_limit) {
+        info->payload_decode_length = payload_decode_limit;
     }
     info->payload_preview_length = available;
     if (info->payload_preview_length > MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES) {
@@ -666,4 +668,13 @@ int parser_parse_packet_with_datalink(const unsigned char *packet, size_t packet
 
 int parser_parse_packet(const unsigned char *packet, size_t packet_len, PacketInfo *info) {
     return parser_parse_packet_with_datalink(packet, packet_len, DLT_EN10MB, info);
+}
+
+void parser_set_payload_decode_limit(size_t limit) {
+    if (limit == 0 || limit > MINISNIFFER_MAX_PAYLOAD_DECODE_BYTES) {
+        payload_decode_limit = MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES;
+        return;
+    }
+
+    payload_decode_limit = limit;
 }

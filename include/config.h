@@ -8,6 +8,7 @@
 
 #define MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES 128
 #define MINISNIFFER_DEFAULT_PAYLOAD_DECODE_BYTES 2048
+#define MINISNIFFER_MAX_PAYLOAD_DECODE_BYTES 65535
 #define MINISNIFFER_DEFAULT_PAYLOAD_PREVIEW_BYTES 256
 #define MINISNIFFER_DEFAULT_MAX_FLOWS 512
 #define MINISNIFFER_DEFAULT_STREAM_BUFFER_BYTES 32768
@@ -23,6 +24,11 @@
 #define MINISNIFFER_VERSION "0.2.0"
 
 typedef enum { LOG_FLUSH_ALWAYS = 0, LOG_FLUSH_LINE, LOG_FLUSH_EXIT } LogFlushMode;
+typedef enum {
+    DOMAIN_MATCH_NORMALIZED = 0,
+    DOMAIN_MATCH_EXACT,
+    DOMAIN_MATCH_IDNA
+} DomainMatchMode;
 
 /*
  * MiniSnifferConfig stores runtime options for one MiniSniffer-C run.
@@ -96,6 +102,7 @@ typedef struct {
 
     bool filter_tls_alpn_enabled;
     char filter_tls_alpn[MINISNIFFER_TLS_ALPN_LEN];
+    DomainMatchMode domain_match_mode;
 
     int payload_display_enabled;
 
