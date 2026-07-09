@@ -29,15 +29,27 @@ static bool packet_protocol_to_flow_protocol(Protocol protocol, uint8_t *transpo
  * PacketInfo carries addresses as printable strings for output. Convert once
  * at the flow boundary so comparisons and normalization are numeric.
  */
-static bool parse_ipv4_address(const char *text, IPAddress *address) {
-    struct in_addr parsed;
+static bool parse_ip_address(const char *text, IPAddress *address) {
+    struct in_addr parsed4;
+    struct in6_addr parsed6;
 
-    if (text == NULL || address == NULL || inet_pton(AF_INET, text, &parsed) != 1) {
+    if (text == NULL || address == NULL) {
         return false;
     }
 
-    address->ipv4 = ntohl(parsed.s_addr);
-    return true;
+    memset(address, 0, sizeof(*address));
+    if (inet_pton(AF_INET, text, &parsed4) == 1) {
+        address->family = AF_INET;
+        memcpy(address->bytes, &parsed4, sizeof(parsed4));
+        return true;
+    }
+    if (inet_pton(AF_INET6, text, &parsed6) == 1) {
+        address->family = AF_INET6;
+        memcpy(address->bytes, &parsed6, sizeof(parsed6));
+        return true;
+    }
+
+    return false;
 }
 
 /*
@@ -45,11 +57,17 @@ static bool parse_ipv4_address(const char *text, IPAddress *address) {
  */
 static int compare_endpoint(IPAddress left_ip, uint16_t left_port, IPAddress right_ip,
                             uint16_t right_port) {
-    if (left_ip.ipv4 < right_ip.ipv4) {
+    int address_order;
+
+    if (left_ip.family < right_ip.family) {
         return -1;
     }
-    if (left_ip.ipv4 > right_ip.ipv4) {
+    if (left_ip.family > right_ip.family) {
         return 1;
+    }
+    address_order = memcmp(left_ip.bytes, right_ip.bytes, sizeof(left_ip.bytes));
+    if (address_order != 0) {
+        return address_order < 0 ? -1 : 1;
     }
     if (left_port < right_port) {
         return -1;
@@ -66,8 +84,11 @@ static int compare_endpoint(IPAddress left_ip, uint16_t left_port, IPAddress rig
  * comparison with no allocated ownership involved.
  */
 static bool flow_key_equals(const FlowKey *left, const FlowKey *right) {
-    return left->a_ip.ipv4 == right->a_ip.ipv4 && left->a_port == right->a_port &&
-           left->b_ip.ipv4 == right->b_ip.ipv4 && left->b_port == right->b_port &&
+    return left->a_ip.family == right->a_ip.family &&
+           memcmp(left->a_ip.bytes, right->a_ip.bytes, sizeof(left->a_ip.bytes)) == 0 &&
+           left->a_port == right->a_port && left->b_ip.family == right->b_ip.family &&
+           memcmp(left->b_ip.bytes, right->b_ip.bytes, sizeof(left->b_ip.bytes)) == 0 &&
+           left->b_port == right->b_port &&
            left->transport_protocol == right->transport_protocol;
 }
 
@@ -148,8 +169,7 @@ bool flow_key_from_packet(const PacketInfo *packet, FlowKey *key, FlowDirection 
         return false;
     }
     if (!packet_protocol_to_flow_protocol(packet->protocol, &transport_protocol) ||
-        !parse_ipv4_address(packet->src_ip, &src_ip) ||
-        !parse_ipv4_address(packet->dst_ip, &dst_ip)) {
+        !parse_ip_address(packet->src_ip, &src_ip) || !parse_ip_address(packet->dst_ip, &dst_ip)) {
         return false;
     }
 

@@ -65,7 +65,7 @@ Supported filters include:
 
 - `--protocol <tcp|udp|icmp|other>`
 - `--port <number>`
-- `--host <ipv4>`
+- `--host <ip>`
 - `--payload-contains <text>`
 - `--payload-hex <hex>`
 - `--app <http|dns|tls>`

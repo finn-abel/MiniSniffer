@@ -21,6 +21,10 @@ static PacketInfo make_tcp_packet(const char *src_ip, uint16_t src_port, const c
     return packet;
 }
 
+static int ip_address_equals(IPAddress left, IPAddress right) {
+    return left.family == right.family && memcmp(left.bytes, right.bytes, sizeof(left.bytes)) == 0;
+}
+
 static void test_flow_key_normalizes_tcp_directions(void) {
     PacketInfo forward = make_tcp_packet("10.0.0.1", 50000, "93.184.216.34", 80, 100);
     PacketInfo reverse = make_tcp_packet("93.184.216.34", 80, "10.0.0.1", 50000, 120);
@@ -32,9 +36,9 @@ static void test_flow_key_normalizes_tcp_directions(void) {
     assert(flow_key_from_packet(&forward, &forward_key, &forward_direction));
     assert(flow_key_from_packet(&reverse, &reverse_key, &reverse_direction));
 
-    assert(forward_key.a_ip.ipv4 == reverse_key.a_ip.ipv4);
+    assert(ip_address_equals(forward_key.a_ip, reverse_key.a_ip));
     assert(forward_key.a_port == reverse_key.a_port);
-    assert(forward_key.b_ip.ipv4 == reverse_key.b_ip.ipv4);
+    assert(ip_address_equals(forward_key.b_ip, reverse_key.b_ip));
     assert(forward_key.b_port == reverse_key.b_port);
     assert(forward_key.transport_protocol == 6);
     assert(forward_direction == FLOW_DIR_A_TO_B);
@@ -112,8 +116,8 @@ static int flow_matches_packet(const FlowInfo *flow, const PacketInfo *packet) {
     FlowKey key;
 
     return flow != NULL && flow_key_from_packet(packet, &key, NULL) &&
-           flow->key.a_ip.ipv4 == key.a_ip.ipv4 && flow->key.a_port == key.a_port &&
-           flow->key.b_ip.ipv4 == key.b_ip.ipv4 && flow->key.b_port == key.b_port &&
+           ip_address_equals(flow->key.a_ip, key.a_ip) && flow->key.a_port == key.a_port &&
+           ip_address_equals(flow->key.b_ip, key.b_ip) && flow->key.b_port == key.b_port &&
            flow->key.transport_protocol == key.transport_protocol;
 }
 
@@ -195,6 +199,25 @@ static void test_flow_key_supports_udp_and_endpoint_ties(void) {
     assert(key.transport_protocol == 17);
     assert(key.a_port == 60000);
     assert(direction == FLOW_DIR_A_TO_B);
+}
+
+static void test_flow_key_supports_ipv6_tcp_reassembly(void) {
+    FlowTable table;
+    PacketInfo forward = make_tcp_packet("2001:db8::2", 50000, "2001:db8::1", 443, 100);
+    PacketInfo reverse = make_tcp_packet("2001:db8::1", 443, "2001:db8::2", 50000, 120);
+    FlowDirection direction;
+    FlowInfo *first;
+    FlowInfo *second;
+
+    assert(flow_table_init(&table, 2, 1024, 60));
+    first = flow_table_get_or_create(&table, &forward, 1, &direction);
+    assert(first != NULL);
+    assert(direction == FLOW_DIR_B_TO_A);
+    second = flow_table_get_or_create(&table, &reverse, 2, &direction);
+    assert(second == first);
+    assert(direction == FLOW_DIR_A_TO_B);
+    assert(table.count == 1);
+    flow_table_cleanup(&table);
 }
 
 static void test_flow_functions_reject_invalid_inputs(void) {
@@ -286,6 +309,7 @@ int main(void) {
     test_flow_key_rejects_packets_without_ports();
     test_flow_table_rejects_unsafe_limits();
     test_flow_key_supports_udp_and_endpoint_ties();
+    test_flow_key_supports_ipv6_tcp_reassembly();
     test_flow_functions_reject_invalid_inputs();
     test_flow_table_handles_zero_timeout_and_clock_rollback();
     test_flow_table_can_select_nonzero_oldest_index();

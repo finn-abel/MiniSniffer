@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -71,10 +72,20 @@ static const char *transport_name(uint8_t transport_protocol) {
     return "other";
 }
 
-static void print_ip_address(IPAddress address) {
-    printf("%u.%u.%u.%u", (unsigned int)((address.ipv4 >> 24) & 0xff),
-           (unsigned int)((address.ipv4 >> 16) & 0xff), (unsigned int)((address.ipv4 >> 8) & 0xff),
-           (unsigned int)(address.ipv4 & 0xff));
+static void print_flow_endpoint(IPAddress address, uint16_t port) {
+    char text[INET6_ADDRSTRLEN];
+
+    if ((address.family == AF_INET || address.family == AF_INET6) &&
+        inet_ntop(address.family, address.bytes, text, sizeof(text)) != NULL) {
+        if (address.family == AF_INET6) {
+            printf("[%s]:%u", text, (unsigned int)port);
+        } else {
+            printf("%s:%u", text, (unsigned int)port);
+        }
+        return;
+    }
+
+    printf("unknown:%u", (unsigned int)port);
 }
 
 static void print_escaped_text(const char *text) {
@@ -324,10 +335,9 @@ void output_print_flow_app_event(const FlowInfo *flow) {
     }
 
     printf("flow %s ", transport_name(flow->key.transport_protocol));
-    print_ip_address(flow->key.a_ip);
-    printf(":%u <-> ", (unsigned int)flow->key.a_port);
-    print_ip_address(flow->key.b_ip);
-    printf(":%u", (unsigned int)flow->key.b_port);
+    print_flow_endpoint(flow->key.a_ip, flow->key.a_port);
+    printf(" <-> ");
+    print_flow_endpoint(flow->key.b_ip, flow->key.b_port);
     print_flow_app_fields(&flow->app);
     printf("\n");
 }
@@ -358,6 +368,10 @@ void output_print_packet_json(const PacketInfo *packet, const AppInfo *app, cons
     }
     if (packet->has_ports != 0) {
         printf(",\"dst_port\":%u", (unsigned int)packet->dst_port);
+    }
+    if (packet->has_icmp != 0) {
+        printf(",\"icmp_type\":%u,\"icmp_code\":%u", (unsigned int)packet->icmp_type,
+               (unsigned int)packet->icmp_code);
     }
     printf("},\"packet_length\":%zu", packet->size);
 

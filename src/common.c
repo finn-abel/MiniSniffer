@@ -19,6 +19,23 @@ const char *protocol_to_string(Protocol protocol) {
     }
 }
 
+static const char *packet_protocol_display(const PacketInfo *info) {
+    if (info != NULL && info->protocol == PROTO_ICMP && info->ip_version == 6) {
+        return "ICMPv6";
+    }
+
+    return protocol_to_string(info == NULL ? PROTO_OTHER : info->protocol);
+}
+
+static void print_endpoint_with_port(const char *ip, uint16_t port) {
+    if (ip != NULL && strchr(ip, ':') != NULL) {
+        printf("[%s]:%u", ip, (unsigned int)port);
+        return;
+    }
+
+    printf("%s:%u", ip == NULL ? "" : ip, (unsigned int)port);
+}
+
 int protocol_from_string(const char *text, Protocol *protocol) {
     /* Reject null inputs before comparing against supported protocol names. */
     if (text == NULL || protocol == NULL) {
@@ -53,18 +70,25 @@ void packet_info_print(const PacketInfo *info) {
     /* Include addresses when IPv4 parsing has filled both endpoint strings. */
     if (info->src_ip[0] != '\0' && info->dst_ip[0] != '\0') {
         if (info->has_ports != 0) {
-            printf("[%03u] %-4s %s:%u -> %s:%u size=%zu\n", info->packet_number,
-                   protocol_to_string(info->protocol), info->src_ip, (unsigned int)info->src_port,
-                   info->dst_ip, (unsigned int)info->dst_port, info->size);
+            printf("[%03u] %-6s ", info->packet_number, packet_protocol_display(info));
+            print_endpoint_with_port(info->src_ip, info->src_port);
+            printf(" -> ");
+            print_endpoint_with_port(info->dst_ip, info->dst_port);
+            printf(" size=%zu\n", info->size);
             return;
         }
 
-        printf("[%03u] %-4s %s -> %s size=%zu\n", info->packet_number,
-               protocol_to_string(info->protocol), info->src_ip, info->dst_ip, info->size);
+        printf("[%03u] %-6s %s -> %s size=%zu", info->packet_number,
+               packet_protocol_display(info), info->src_ip, info->dst_ip, info->size);
+        if (info->has_icmp != 0) {
+            printf(" type=%u code=%u", (unsigned int)info->icmp_type,
+                   (unsigned int)info->icmp_code);
+        }
+        printf("\n");
         return;
     }
 
-    printf("[%03u] %-4s size=%zu\n", info->packet_number, protocol_to_string(info->protocol),
+    printf("[%03u] %-6s size=%zu\n", info->packet_number, packet_protocol_display(info),
            info->size);
 }
 

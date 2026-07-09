@@ -58,7 +58,7 @@ typedef struct {
     uint16_t filter_port;
 
     int filter_host_enabled;
-    char filter_host[16];
+    char filter_host[MINISNIFFER_IP_TEXT_LEN];
 
     int filter_payload_text_enabled;
     unsigned char filter_payload_text[MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES];

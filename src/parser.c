@@ -17,6 +17,13 @@
 #define IPV4_PROTOCOL_TCP 6
 #define IPV4_PROTOCOL_UDP 17
 #define IPV6_PROTOCOL_ICMPV6 58
+#define IPV6_PROTOCOL_HOPOPTS 0
+#define IPV6_PROTOCOL_ROUTING 43
+#define IPV6_PROTOCOL_FRAGMENT 44
+#define IPV6_PROTOCOL_ESP 50
+#define IPV6_PROTOCOL_AH 51
+#define IPV6_PROTOCOL_NO_NEXT 59
+#define IPV6_PROTOCOL_DEST_OPTS 60
 #define TCP_MIN_HEADER_LEN 20
 #define UDP_HEADER_LEN 8
 #define ICMP_HEADER_LEN 8
@@ -27,6 +34,12 @@
 #define NULL_LOOPBACK_HEADER_LEN 4
 
 typedef enum { NETWORK_UNKNOWN = 0, NETWORK_IPV4, NETWORK_IPV6 } NetworkLayer;
+
+typedef struct {
+    unsigned char next_header;
+    size_t transport_offset;
+    int transport_reachable;
+} IPv6Transport;
 
 /*
  * Reads a two-byte network-order integer without assuming packet alignment.
@@ -224,6 +237,9 @@ static void parse_icmp_payload(const unsigned char *packet, size_t packet_len, s
         return;
     }
 
+    info->has_icmp = 1;
+    info->icmp_type = packet[icmp_offset];
+    info->icmp_code = packet[icmp_offset + 1];
     parse_payload(packet, packet_len, icmp_offset + ICMP_HEADER_LEN, info);
 }
 
@@ -244,8 +260,61 @@ static void initialize_packet_info(const unsigned char *packet, size_t packet_le
     memset(info, 0, sizeof(*info));
     info->size = packet_len;
     info->protocol = PROTO_OTHER;
+    info->ip_version = 0;
     info->src_ip[0] = '\0';
     info->dst_ip[0] = '\0';
+}
+
+static int ipv6_extension_header_is_skippable(unsigned char next_header) {
+    return next_header == IPV6_PROTOCOL_HOPOPTS || next_header == IPV6_PROTOCOL_ROUTING ||
+           next_header == IPV6_PROTOCOL_DEST_OPTS || next_header == IPV6_PROTOCOL_AH;
+}
+
+static size_t ipv6_extension_header_length(const unsigned char *header, unsigned char next_header) {
+    if (next_header == IPV6_PROTOCOL_AH) {
+        return ((size_t)header[1] + 2) * 4;
+    }
+
+    return ((size_t)header[1] + 1) * 8;
+}
+
+static IPv6Transport find_ipv6_transport(const unsigned char *packet, size_t packet_len,
+                                         size_t extension_offset, unsigned char next_header) {
+    IPv6Transport result;
+    size_t offset = extension_offset;
+
+    result.next_header = next_header;
+    result.transport_offset = offset;
+    result.transport_reachable = 1;
+
+    while (ipv6_extension_header_is_skippable(result.next_header)) {
+        size_t header_len;
+
+        if (packet_len < offset + 2) {
+            result.transport_reachable = 0;
+            return result;
+        }
+        header_len = ipv6_extension_header_length(packet + offset, result.next_header);
+        if (header_len < 8 || packet_len < offset + header_len) {
+            result.transport_reachable = 0;
+            return result;
+        }
+        result.next_header = packet[offset];
+        offset += header_len;
+        result.transport_offset = offset;
+    }
+
+    if (result.next_header == IPV6_PROTOCOL_FRAGMENT) {
+        if (packet_len >= offset + 8) {
+            result.next_header = packet[offset];
+        }
+        result.transport_reachable = 0;
+    } else if (result.next_header == IPV6_PROTOCOL_ESP ||
+               result.next_header == IPV6_PROTOCOL_NO_NEXT) {
+        result.transport_reachable = 0;
+    }
+
+    return result;
 }
 
 static int parse_ipv4_packet(const unsigned char *packet, size_t packet_len, size_t ip_offset,
@@ -302,6 +371,7 @@ static int parse_ipv4_packet(const unsigned char *packet, size_t packet_len, siz
      * Payload previews are derived from each transport header's own length.
      */
     set_ipv4_protocol(ip_header[9], info);
+    info->ip_version = 4;
     clear_transport_ports(info);
 
     /*
@@ -337,7 +407,7 @@ static int parse_ipv6_packet(const unsigned char *packet, size_t packet_len, siz
     uint16_t payload_length;
     unsigned char next_header;
     unsigned char ip_version;
-    size_t transport_offset;
+    IPv6Transport transport;
 
     if (packet_len < ip_offset + IPV6_HEADER_LEN) {
         return 0;
@@ -363,19 +433,24 @@ static int parse_ipv6_packet(const unsigned char *packet, size_t packet_len, siz
         return 1;
     }
 
-    set_ip_protocol(next_header, info);
+    info->ip_version = 6;
+    transport = find_ipv6_transport(packet, parsed_packet_len, ip_offset + IPV6_HEADER_LEN,
+                                    next_header);
+    set_ip_protocol(transport.next_header, info);
     clear_transport_ports(info);
-    transport_offset = ip_offset + IPV6_HEADER_LEN;
+    if (!transport.transport_reachable) {
+        return 0;
+    }
 
     if (info->protocol == PROTO_TCP) {
-        parse_tcp_ports(packet, parsed_packet_len, transport_offset, info);
-        parse_tcp_sequence_and_flags(packet, parsed_packet_len, transport_offset, info);
-        parse_tcp_payload(packet, parsed_packet_len, transport_offset, info);
+        parse_tcp_ports(packet, parsed_packet_len, transport.transport_offset, info);
+        parse_tcp_sequence_and_flags(packet, parsed_packet_len, transport.transport_offset, info);
+        parse_tcp_payload(packet, parsed_packet_len, transport.transport_offset, info);
     } else if (info->protocol == PROTO_UDP) {
-        parse_udp_ports(packet, parsed_packet_len, transport_offset, info);
-        parse_udp_payload(packet, parsed_packet_len, transport_offset, info);
+        parse_udp_ports(packet, parsed_packet_len, transport.transport_offset, info);
+        parse_udp_payload(packet, parsed_packet_len, transport.transport_offset, info);
     } else if (info->protocol == PROTO_ICMP) {
-        parse_icmp_payload(packet, parsed_packet_len, transport_offset, info);
+        parse_icmp_payload(packet, parsed_packet_len, transport.transport_offset, info);
     }
 
     return 0;

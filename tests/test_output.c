@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -53,6 +54,12 @@ static void call_output_print_packet_json(void *context) {
                              capture->payload_enabled != 0, capture->payload_limit);
 }
 
+static void set_ip_address(IPAddress *address, int family, const char *text) {
+    memset(address, 0, sizeof(*address));
+    address->family = family;
+    assert(inet_pton(family, text, address->bytes) == 1);
+}
+
 static void test_output_print_packet_app_accepts_protocols(void) {
     AppInfo app;
 
@@ -80,9 +87,9 @@ static void test_output_print_flow_app_event_accepts_flow(void) {
     FlowInfo flow;
 
     memset(&flow, 0, sizeof(flow));
-    flow.key.a_ip.ipv4 = 0xc0a80119;
+    set_ip_address(&flow.key.a_ip, AF_INET, "192.168.1.25");
     flow.key.a_port = 51432;
-    flow.key.b_ip.ipv4 = 0x5db8d822;
+    set_ip_address(&flow.key.b_ip, AF_INET, "93.184.216.34");
     flow.key.b_port = 443;
     flow.key.transport_protocol = 6;
     flow.app.protocol = APP_PROTO_TLS;
@@ -194,9 +201,9 @@ static void test_output_print_flow_app_event_handles_all_protocols(void) {
     memset(&flow, 0, sizeof(flow));
     output_print_flow_app_event(&flow);
 
-    flow.key.a_ip.ipv4 = 0x0a000001;
+    set_ip_address(&flow.key.a_ip, AF_INET6, "2001:db8::1");
     flow.key.a_port = 1234;
-    flow.key.b_ip.ipv4 = 0x0a000002;
+    set_ip_address(&flow.key.b_ip, AF_INET6, "2001:db8::2");
     flow.key.b_port = 80;
     flow.key.transport_protocol = 17;
     flow.app.protocol = APP_PROTO_HTTP;

@@ -16,7 +16,7 @@ static void print_usage(FILE *stream, const char *program_name) {
             name);
     fprintf(stream, "       [--count <number>] [--quiet] [--verbose] [--no-color]\n");
     fprintf(stream, "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n");
-    fprintf(stream, "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n");
+    fprintf(stream, "       [--host <ip>] [--payload] [--payload-bytes <number>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
     fprintf(stream, "       [--read <file.pcap>] [--write <file.pcap>]\n");
     fprintf(stream, "       [--json] [--flush-log <always|line|exit>]\n");
@@ -138,7 +138,7 @@ static int fail_invalid_port(const char *program_name) {
 }
 
 static int fail_invalid_host(const char *program_name) {
-    fprintf(stderr, "Error: host must be a valid IPv4 address.\n");
+    fprintf(stderr, "Error: host must be a valid IPv4 or IPv6 address.\n");
     print_usage(stderr, program_name);
     return 1;
 }
@@ -258,6 +258,28 @@ static int parse_dns_type(const char *text, uint16_t *type) {
 
     *type = (uint16_t)numeric_type;
     return 0;
+}
+
+static int parse_ip_host(const char *text, char *destination, size_t destination_size) {
+    struct in_addr address4;
+    struct in6_addr address6;
+    int family;
+    const void *address;
+
+    if (text == NULL || destination == NULL || destination_size == 0) {
+        return 1;
+    }
+    if (inet_pton(AF_INET, text, &address4) == 1) {
+        family = AF_INET;
+        address = &address4;
+    } else if (inet_pton(AF_INET6, text, &address6) == 1) {
+        family = AF_INET6;
+        address = &address6;
+    } else {
+        return 1;
+    }
+
+    return inet_ntop(family, address, destination, destination_size) == NULL ? 1 : 0;
 }
 
 /*
@@ -404,15 +426,11 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             config->filter_port = (uint16_t)port;
             i++;
         } else if (strcmp(argv[i], "--host") == 0) {
-            struct in_addr address;
-
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--host requires a value.");
             }
-            if (inet_pton(AF_INET, argv[i + 1], &address) != 1) {
-                return fail_invalid_host(program_name);
-            }
-            if (copy_arg(config->filter_host, sizeof(config->filter_host), argv[i + 1]) != 0) {
+            if (parse_ip_host(argv[i + 1], config->filter_host, sizeof(config->filter_host)) !=
+                0) {
                 return fail_invalid_host(program_name);
             }
             config->filter_host_enabled = 1;

@@ -65,6 +65,28 @@ static void test_app_decode_packet_uses_ports_for_dns(void) {
     assert(strcmp(info.dns_query_name, "www.example.com") == 0);
 }
 
+static void test_app_decode_packet_works_with_ipv6_tcp_and_udp(void) {
+    PacketInfo http_packet = make_payload_packet(PROTO_TCP, 50000, 80, HTTP_GET_WITH_HOST,
+                                                 sizeof(HTTP_GET_WITH_HOST) - 1);
+    PacketInfo dns_packet =
+        make_payload_packet(PROTO_UDP, 54000, 53, DNS_A_QUERY, sizeof(DNS_A_QUERY));
+    AppInfo info;
+
+    http_packet.ip_version = 6;
+    snprintf(http_packet.src_ip, sizeof(http_packet.src_ip), "2001:db8::1");
+    snprintf(http_packet.dst_ip, sizeof(http_packet.dst_ip), "2001:db8::2");
+    assert(app_decode_packet(&http_packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_HTTP);
+    assert(strcmp(info.http_host, "example.com") == 0);
+
+    dns_packet.ip_version = 6;
+    snprintf(dns_packet.src_ip, sizeof(dns_packet.src_ip), "2001:db8::1");
+    snprintf(dns_packet.dst_ip, sizeof(dns_packet.dst_ip), "2001:db8::2");
+    assert(app_decode_packet(&dns_packet, &info) == APP_DECODE_OK);
+    assert(info.protocol == APP_PROTO_DNS);
+    assert(strcmp(info.dns_query_name, "www.example.com") == 0);
+}
+
 static void test_app_decode_packet_can_write_packet_app(void) {
     PacketInfo packet = make_payload_packet(PROTO_TCP, 50000, 80, HTTP_GET_WITH_HOST,
                                             sizeof(HTTP_GET_WITH_HOST) - 1);
@@ -243,6 +265,7 @@ int main(void) {
     test_app_decode_buffer_detects_tls();
     test_app_decode_buffer_reports_preferred_empty_need_more();
     test_app_decode_packet_uses_ports_for_dns();
+    test_app_decode_packet_works_with_ipv6_tcp_and_udp();
     test_app_decode_packet_can_write_packet_app();
     test_app_decode_packet_uses_tcp_dns_frame();
     test_app_decode_packet_reports_preferred_malformed();

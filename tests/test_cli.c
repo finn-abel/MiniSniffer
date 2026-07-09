@@ -12,7 +12,7 @@ static const char *EXPECTED_USAGE =
     "Usage: MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name>]\n"
     "       [--count <number>] [--quiet] [--verbose] [--no-color]\n"
     "       [--protocol <tcp|udp|icmp|other>] [--port <number>]\n"
-    "       [--host <ipv4>] [--payload] [--payload-bytes <number>]\n"
+    "       [--host <ip>] [--payload] [--payload-bytes <number>]\n"
     "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n"
     "       [--read <file.pcap>] [--write <file.pcap>]\n"
     "       [--json] [--flush-log <always|line|exit>]\n"
@@ -173,12 +173,18 @@ static void test_cli_parse_args_sets_port(void) {
 static void test_cli_parse_args_sets_host(void) {
     AppConfig config;
     char *argv[] = {"MiniSniffer", "--host", "8.8.8.8"};
+    char *ipv6[] = {"MiniSniffer", "--host", "2001:0db8:0000:0000:0000:0000:0000:0001"};
 
     config_init_defaults(&config);
 
     assert(cli_parse_args(3, argv, &config) == 0);
     assert(config.filter_host_enabled == 1);
     assert(strcmp(config.filter_host, "8.8.8.8") == 0);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(3, ipv6, &config) == 0);
+    assert(config.filter_host_enabled == 1);
+    assert(strcmp(config.filter_host, "2001:db8::1") == 0);
 }
 
 static void test_cli_parse_args_sets_log(void) {
@@ -396,7 +402,7 @@ static void test_cli_parse_args_rejects_zero_count(void) {
 
 static void test_cli_parse_args_rejects_long_host(void) {
     AppConfig config;
-    char *argv[] = {"MiniSniffer", "--host", "255.255.255.2555"};
+    char *argv[] = {"MiniSniffer", "--host", "2001:db8::12345"};
 
     config_init_defaults(&config);
 

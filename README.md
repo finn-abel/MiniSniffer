@@ -17,8 +17,9 @@ writes CSV logs, and can report capture statistics when the run completes.
 - Live packet capture with libpcap
 - Automatic default interface selection
 - Explicit interface selection with `--interface`
-- IPv4 packet parsing for TCP, UDP, ICMP, and other protocols
-- Protocol, port, and host filters
+- IPv4 and IPv6 packet parsing for TCP, UDP, ICMP/ICMPv6, and other protocols
+- Conservative IPv6 extension-header handling before TCP/UDP/ICMPv6 parsing
+- Protocol, port, and IPv4/IPv6 host filters
 - Bounded packet payload inspection
 - Literal text and hex payload filters
 - Packet-local HTTP, DNS, and TLS ClientHello metadata decoding
@@ -116,7 +117,7 @@ sudo ./MiniSniffer --protocol tcp --payload --payload-bytes 80 --payload-contain
 Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name>]
        [--count <number>] [--quiet] [--verbose] [--no-color]
        [--protocol <tcp|udp|icmp|other>] [--port <number>]
-       [--host <ipv4>] [--payload] [--payload-bytes <number>]
+       [--host <ip>] [--payload] [--payload-bytes <number>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
        [--read <file.pcap>] [--write <file.pcap>]
        [--json] [--flush-log <always|line|exit>]
@@ -141,7 +142,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--no-color` | Disable terminal color output. Current MiniSniffer output is plain text. |
 | `--protocol <tcp|udp|icmp|other>` | Display only packets matching the selected protocol. |
 | `--port <number>` | Display only TCP/UDP packets where the source or destination port matches. |
-| `--host <ipv4>` | Display only packets where the source or destination IPv4 address matches. |
+| `--host <ip>` | Display only packets where the source or destination IPv4 or IPv6 address matches. |
 | `--payload` | Print a bounded hex and ASCII payload preview for displayed packets. |
 | `--payload-bytes <number>` | Set the payload preview length. Default is 256 bytes. Maximum is 256 bytes. |
 | `--payload-contains <text>` | Display only packets whose bounded payload decode window contains the literal text. |
@@ -206,7 +207,9 @@ sudo ./MiniSniffer --protocol icmp --count 5
 sudo ./MiniSniffer --port 443 --count 10
 sudo ./MiniSniffer --protocol tcp --port 443 --count 10
 sudo ./MiniSniffer --host 8.8.8.8 --count 10
+sudo ./MiniSniffer --host 2001:4860:4860::8888 --count 10
 sudo ./MiniSniffer --protocol tcp --port 443 --host 142.250.190.14 --count 10
+sudo ./MiniSniffer --protocol udp --port 53 --host 2001:4860:4860::8888 --decode-app --app dns
 ```
 
 Port filters apply only to packets with TCP or UDP ports. ICMP and other
@@ -260,6 +263,13 @@ Packets without ports omit them:
 
 ```text
 [002] ICMP 192.168.1.25 -> 8.8.8.8 size=98
+```
+
+ICMPv6 packets are still matched by `--protocol icmp`; text output includes
+the ICMPv6 type and code when the common header is captured:
+
+```text
+[005] ICMPv6 2001:db8::1 -> 2001:db8::2 size=62 type=128 code=0
 ```
 
 With `--payload`, MiniSniffer prints a bounded payload preview below each

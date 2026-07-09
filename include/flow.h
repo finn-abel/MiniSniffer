@@ -8,13 +8,9 @@
 #include "common.h"
 #include "tcp_reassembly.h"
 
-/*
- * MiniSniffer currently tracks IPv4 flows only because PacketInfo stores
- * parsed endpoints as IPv4 text. The host-order integer form makes flow key
- * comparison independent of presentation formatting.
- */
 typedef struct {
-    uint32_t ipv4;
+    int family;
+    uint8_t bytes[16];
 } IPAddress;
 
 /*

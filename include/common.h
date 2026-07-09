@@ -60,7 +60,7 @@ typedef struct {
 
 /*
  * PacketInfo represents one captured packet after basic parsing.
- * It stores source and destination IPv4 addresses, optional transport ports,
+ * It stores source and destination IP address text, optional transport ports,
  * protocol type, packet number, packet size, a direct payload view, and a
  * bounded payload preview.
  * has_ports is non-zero only when src_port and dst_port are valid.
@@ -73,6 +73,7 @@ typedef struct {
     uint16_t dst_port;
 
     Protocol protocol;
+    int ip_version;
 
     uint32_t packet_number;
     size_t size;
@@ -83,6 +84,10 @@ typedef struct {
     int has_tcp_sequence;
     uint32_t tcp_sequence;
     uint8_t tcp_flags;
+
+    int has_icmp;
+    uint8_t icmp_type;
+    uint8_t icmp_code;
 
     int has_payload;
     const uint8_t *payload;
