@@ -64,12 +64,8 @@ void tcp_reassembly_direction_cleanup(TcpReassemblyDirection *state);
  * In-order data is appended to state->stream; simple out-of-order data is held
  * until gaps are filled, subject to the same configured memory cap.
  */
-TcpReassemblyResult tcp_reassembly_process_segment(
-    TcpReassemblyDirection *state,
-    uint32_t sequence,
-    uint8_t flags,
-    const uint8_t *payload,
-    size_t payload_length
-);
+TcpReassemblyResult tcp_reassembly_process_segment(TcpReassemblyDirection *state, uint32_t sequence,
+                                                   uint8_t flags, const uint8_t *payload,
+                                                   size_t payload_length);
 
 #endif

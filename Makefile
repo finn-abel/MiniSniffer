@@ -1,11 +1,21 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror -std=c11 -g
-INCLUDES = -Iinclude
-LDLIBS = -lpcap
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+PKG_CONFIG ?= pkg-config
+CLANG_FORMAT ?= $(shell command -v clang-format 2>/dev/null || xcrun --find clang-format 2>/dev/null || true)
+CFLAGS ?= -Wall -Wextra -Werror -std=c11 -g
+PCAP_CFLAGS := $(shell $(PKG_CONFIG) --cflags libpcap 2>/dev/null)
+PCAP_LIBS := $(shell $(PKG_CONFIG) --libs libpcap 2>/dev/null)
+ifeq ($(strip $(PCAP_LIBS)),)
+PCAP_LIBS = -lpcap
+endif
+INCLUDES = -Iinclude $(PCAP_CFLAGS)
+LDLIBS ?= $(PCAP_LIBS)
 COVERAGE_CFLAGS = -Wall -Wextra -Werror -std=c11 -g -O0 -fprofile-instr-generate -fcoverage-mapping
-COVERAGE_DIR ?= /tmp/packetscope-coverage
+COVERAGE_DIR ?= /tmp/minisniffer-coverage
 LLVM_PROFDATA ?= xcrun llvm-profdata
 LLVM_COV ?= xcrun llvm-cov
+SANITIZE_CFLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer
 
 TARGET = MiniSniffer
 
@@ -24,6 +34,8 @@ TEST_SUPPORT_OBJ = $(TEST_SUPPORT_SRC:.c=.o)
 
 TEST_TARGETS = $(TEST_SRC:tests/%.c=%)
 TEST_OBJ = $(TEST_SRC:.c=.o)
+FORMAT_FILES = $(SRC) $(TEST_SRC) $(wildcard include/*.h)
+STATIC_FILES = $(SRC) $(TEST_SRC)
 
 all: $(TARGET)
 
@@ -60,19 +72,19 @@ coverage:
 	LLVM_PROFILE_FILE='$(COVERAGE_DIR)'/main-help-%p.profraw ./$(TARGET) --help \
 		>'$(COVERAGE_DIR)'/main-help.out 2>&1; \
 	if LLVM_PROFILE_FILE='$(COVERAGE_DIR)'/main-invalid-%p.profraw ./$(TARGET) \
-		--packetscope-invalid-option \
+		--minisniffer-invalid-option \
 		>'$(COVERAGE_DIR)'/main-invalid.out 2>&1; then \
 		echo "Coverage smoke test unexpectedly accepted an invalid option."; \
 		exit 1; \
 	fi; \
 	if LLVM_PROFILE_FILE='$(COVERAGE_DIR)'/main-defaults-%p.profraw ./$(TARGET) \
-		--interface packetscope-no-such-interface \
+		--interface minisniffer-no-such-interface \
 		>'$(COVERAGE_DIR)'/main-defaults.out 2>&1; then \
 		echo "Coverage smoke test unexpectedly opened a missing interface."; \
 		exit 1; \
 	fi; \
 	if LLVM_PROFILE_FILE='$(COVERAGE_DIR)'/main-options-%p.profraw ./$(TARGET) \
-		--interface packetscope-no-such-interface --count 1 --protocol tcp \
+		--interface minisniffer-no-such-interface --count 1 --protocol tcp \
 		--port 80 --host 127.0.0.1 --payload --payload-bytes 64 \
 		--payload-contains GET --payload-hex 474554 \
 		--log '$(COVERAGE_DIR)'/packets.csv --decode-app --reassemble \
@@ -110,4 +122,39 @@ clean:
 run: $(TARGET)
 	./$(TARGET)
 
-.PHONY: all clean coverage run test
+format:
+	@test -n '$(CLANG_FORMAT)' || \
+		{ echo "format: install clang-format or set CLANG_FORMAT=/path/to/clang-format"; exit 1; }
+	$(CLANG_FORMAT) -i $(FORMAT_FILES)
+
+format-check:
+	@if test -n '$(CLANG_FORMAT)'; then \
+		$(CLANG_FORMAT) --dry-run --Werror $(FORMAT_FILES); \
+	else \
+		echo "format-check: skipped; clang-format not found"; \
+	fi
+
+sanitize:
+	$(MAKE) clean
+	$(MAKE) CFLAGS='$(CFLAGS) $(SANITIZE_CFLAGS)' test
+
+static-check:
+	@if command -v clang-tidy >/dev/null 2>&1; then \
+		clang-tidy $(STATIC_FILES) -- $(CFLAGS) $(INCLUDES); \
+	elif command -v cppcheck >/dev/null 2>&1; then \
+		cppcheck --enable=warning,style,performance,portability --std=c11 \
+			$(INCLUDES) src include tests; \
+	else \
+		echo "static-check: skipped; clang-tidy and cppcheck not found"; \
+	fi
+
+check: test sanitize format-check static-check
+
+install: $(TARGET)
+	install -d '$(DESTDIR)$(BINDIR)'
+	install -m 0755 $(TARGET) '$(DESTDIR)$(BINDIR)/$(TARGET)'
+
+uninstall:
+	rm -f '$(DESTDIR)$(BINDIR)/$(TARGET)'
+
+.PHONY: all check clean coverage format format-check install run sanitize static-check test uninstall

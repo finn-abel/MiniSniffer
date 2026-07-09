@@ -5,13 +5,8 @@
 #include "app_decoder.h"
 #include "fixtures/app_fixtures.h"
 
-static PacketInfo make_payload_packet(
-    Protocol protocol,
-    uint16_t src_port,
-    uint16_t dst_port,
-    const uint8_t *payload,
-    size_t payload_length
-) {
+static PacketInfo make_payload_packet(Protocol protocol, uint16_t src_port, uint16_t dst_port,
+                                      const uint8_t *payload, size_t payload_length) {
     PacketInfo packet;
 
     memset(&packet, 0, sizeof(packet));
@@ -24,8 +19,8 @@ static PacketInfo make_payload_packet(
     packet.payload_capture_length = payload_length;
     packet.payload_decode_length = payload_length;
     packet.payload_preview_length = payload_length > MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES
-        ? MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES
-        : payload_length;
+                                        ? MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES
+                                        : payload_length;
 
     return packet;
 }
@@ -33,11 +28,8 @@ static PacketInfo make_payload_packet(
 static void test_app_decode_buffer_detects_http(void) {
     AppInfo info;
 
-    assert(app_decode_buffer(APP_PROTO_UNKNOWN,
-                             HTTP_GET_WITH_HOST,
-                             sizeof(HTTP_GET_WITH_HOST) - 1,
-                             &info) ==
-           APP_DECODE_OK);
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN, HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1,
+                             &info) == APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_HTTP);
     assert(strcmp(info.http_method, "GET") == 0);
 }
@@ -52,11 +44,8 @@ static void test_app_decode_buffer_reports_tls_need_more(void) {
 static void test_app_decode_buffer_detects_tls(void) {
     AppInfo info;
 
-    assert(app_decode_buffer(APP_PROTO_UNKNOWN,
-                             TLS_CLIENT_HELLO_SNI_ALPN,
-                             sizeof(TLS_CLIENT_HELLO_SNI_ALPN),
-                             &info) ==
-           APP_DECODE_OK);
+    assert(app_decode_buffer(APP_PROTO_UNKNOWN, TLS_CLIENT_HELLO_SNI_ALPN,
+                             sizeof(TLS_CLIENT_HELLO_SNI_ALPN), &info) == APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_TLS);
     assert(info.tls_handshake_type == 0x01);
 }
@@ -64,8 +53,7 @@ static void test_app_decode_buffer_detects_tls(void) {
 static void test_app_decode_buffer_reports_preferred_empty_need_more(void) {
     AppInfo info;
 
-    assert(app_decode_buffer(APP_PROTO_TLS, (const uint8_t *)"", 0, &info) ==
-           APP_DECODE_NEED_MORE);
+    assert(app_decode_buffer(APP_PROTO_TLS, (const uint8_t *)"", 0, &info) == APP_DECODE_NEED_MORE);
 }
 
 static void test_app_decode_packet_uses_ports_for_dns(void) {
@@ -78,10 +66,7 @@ static void test_app_decode_packet_uses_ports_for_dns(void) {
 }
 
 static void test_app_decode_packet_can_write_packet_app(void) {
-    PacketInfo packet = make_payload_packet(PROTO_TCP,
-                                            50000,
-                                            80,
-                                            HTTP_GET_WITH_HOST,
+    PacketInfo packet = make_payload_packet(PROTO_TCP, 50000, 80, HTTP_GET_WITH_HOST,
                                             sizeof(HTTP_GET_WITH_HOST) - 1);
 
     assert(app_decode_packet(&packet, &packet.app) == APP_DECODE_OK);
@@ -105,11 +90,8 @@ static void test_app_decode_packet_uses_tcp_dns_frame(void) {
 }
 
 static void test_app_decode_packet_reports_preferred_malformed(void) {
-    PacketInfo packet = make_payload_packet(PROTO_TCP,
-                                            50000,
-                                            80,
-                                            HTTP_NO_MATCH,
-                                            sizeof(HTTP_NO_MATCH) - 1);
+    PacketInfo packet =
+        make_payload_packet(PROTO_TCP, 50000, 80, HTTP_NO_MATCH, sizeof(HTTP_NO_MATCH) - 1);
     AppInfo info;
 
     assert(app_decode_packet(&packet, &info) == APP_DECODE_MALFORMED);
@@ -125,10 +107,8 @@ static void test_app_decode_packet_rejects_empty_payload(void) {
 static void test_app_decode_buffer_reports_malformed(void) {
     AppInfo info;
 
-    assert(app_decode_buffer(APP_PROTO_HTTP,
-                             HTTP_MALFORMED,
-                             sizeof(HTTP_MALFORMED) - 1,
-                             &info) == APP_DECODE_MALFORMED);
+    assert(app_decode_buffer(APP_PROTO_HTTP, HTTP_MALFORMED, sizeof(HTTP_MALFORMED) - 1, &info) ==
+           APP_DECODE_MALFORMED);
 }
 
 static void test_app_decode_buffer_handles_all_preferences(void) {
@@ -140,9 +120,7 @@ static void test_app_decode_buffer_handles_all_preferences(void) {
     assert(app_decode_buffer(APP_PROTO_UNKNOWN, (const uint8_t *)"", 0, NULL) ==
            APP_DECODE_NO_MATCH);
 
-    assert(app_decode_buffer(APP_PROTO_TLS,
-                             TLS_CLIENT_HELLO_SNI,
-                             sizeof(TLS_CLIENT_HELLO_SNI),
+    assert(app_decode_buffer(APP_PROTO_TLS, TLS_CLIENT_HELLO_SNI, sizeof(TLS_CLIENT_HELLO_SNI),
                              &info) == APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_TLS);
 
@@ -150,10 +128,8 @@ static void test_app_decode_buffer_handles_all_preferences(void) {
            APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_DNS);
 
-    assert(app_decode_buffer(APP_PROTO_DNS,
-                             HTTP_NO_MATCH,
-                             sizeof(HTTP_NO_MATCH) - 1,
-                             &info) == APP_DECODE_MALFORMED);
+    assert(app_decode_buffer(APP_PROTO_DNS, HTTP_NO_MATCH, sizeof(HTTP_NO_MATCH) - 1, &info) ==
+           APP_DECODE_MALFORMED);
     assert(info.protocol == APP_PROTO_UNKNOWN);
 }
 
@@ -170,11 +146,8 @@ static void test_app_decode_buffer_sniffs_dns_and_rejects_random_data(void) {
 }
 
 static void test_app_decode_packet_sniffs_signatures_without_ports(void) {
-    PacketInfo packet = make_payload_packet(PROTO_OTHER,
-                                            0,
-                                            0,
-                                            HTTP_GET_WITH_HOST,
-                                            sizeof(HTTP_GET_WITH_HOST) - 1);
+    PacketInfo packet =
+        make_payload_packet(PROTO_OTHER, 0, 0, HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1);
     AppInfo info;
 
     packet.has_ports = 0;
@@ -201,10 +174,7 @@ static void test_app_decode_packet_sniffs_signatures_without_ports(void) {
 }
 
 static void test_app_decode_packet_uses_tls_ports(void) {
-    PacketInfo packet = make_payload_packet(PROTO_TCP,
-                                            8443,
-                                            50000,
-                                            TLS_CLIENT_HELLO_SNI,
+    PacketInfo packet = make_payload_packet(PROTO_TCP, 8443, 50000, TLS_CLIENT_HELLO_SNI,
                                             sizeof(TLS_CLIENT_HELLO_SNI));
     AppInfo info;
 
@@ -242,18 +212,14 @@ static void test_app_decode_stream_uses_hints_and_fallback(void) {
     assert(app_decode_stream(&packet, HTTP_GET_WITH_HOST, 0, &info) == APP_DECODE_NO_MATCH);
 
     packet = make_payload_packet(PROTO_TCP, 50000, 8080, NULL, 0);
-    assert(app_decode_stream(&packet,
-                             HTTP_GET_WITH_HOST,
-                             sizeof(HTTP_GET_WITH_HOST) - 1,
-                             &info) == APP_DECODE_OK);
+    assert(app_decode_stream(&packet, HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1, &info) ==
+           APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_HTTP);
 
     packet.src_port = 443;
     packet.dst_port = 50000;
-    assert(app_decode_stream(&packet,
-                             TLS_CLIENT_HELLO_SNI,
-                             sizeof(TLS_CLIENT_HELLO_SNI),
-                             &info) == APP_DECODE_OK);
+    assert(app_decode_stream(&packet, TLS_CLIENT_HELLO_SNI, sizeof(TLS_CLIENT_HELLO_SNI), &info) ==
+           APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_TLS);
 
     dns_frame[0] = 0;
@@ -266,10 +232,8 @@ static void test_app_decode_stream_uses_hints_and_fallback(void) {
 
     packet.protocol = PROTO_OTHER;
     packet.has_ports = 0;
-    assert(app_decode_stream(&packet,
-                             HTTP_GET_WITH_HOST,
-                             sizeof(HTTP_GET_WITH_HOST) - 1,
-                             &info) == APP_DECODE_OK);
+    assert(app_decode_stream(&packet, HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1, &info) ==
+           APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_HTTP);
 }
 

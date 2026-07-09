@@ -18,7 +18,8 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
     fprintf(stream, "       [--decode-app] [--reassemble] [--max-flows <number>]\n");
     fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n");
-    fprintf(stream, "       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]\n");
+    fprintf(stream,
+            "       [--app <http|dns|tls>] [--http-host <host>] [--http-method <method>]\n");
     fprintf(stream, "       [--dns-query <name>] [--dns-type <type>] [--tls-sni <host>]\n");
     fprintf(stream, "       [--tls-alpn <protocol>] [--stats]\n");
 }
@@ -139,24 +140,21 @@ static int fail_invalid_host(const char *program_name) {
 }
 
 static int fail_invalid_payload_bytes(const char *program_name) {
-    fprintf(stderr,
-            "Error: payload byte preview must be between 1 and %u.\n",
+    fprintf(stderr, "Error: payload byte preview must be between 1 and %u.\n",
             (unsigned int)MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES);
     print_usage(stderr, program_name);
     return 1;
 }
 
 static int fail_invalid_payload_text(const char *program_name) {
-    fprintf(stderr,
-            "Error: payload text filter must be between 1 and %u bytes.\n",
+    fprintf(stderr, "Error: payload text filter must be between 1 and %u bytes.\n",
             (unsigned int)MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES);
     print_usage(stderr, program_name);
     return 1;
 }
 
 static int fail_invalid_payload_hex(const char *program_name) {
-    fprintf(stderr,
-            "Error: payload hex filter must contain 1 to %u bytes of hex.\n",
+    fprintf(stderr, "Error: payload hex filter must contain 1 to %u bytes of hex.\n",
             (unsigned int)MINISNIFFER_MAX_PAYLOAD_PATTERN_BYTES);
     print_usage(stderr, program_name);
     return 1;
@@ -261,11 +259,7 @@ static int hex_value(char value) {
  * Separators are accepted for readability, so "47 45 54", "47:45:54",
  * and "47-45-54" all produce the same three bytes.
  */
-static int parse_payload_hex_pattern(
-    const char *text,
-    unsigned char *bytes,
-    size_t *byte_count
-) {
+static int parse_payload_hex_pattern(const char *text, unsigned char *bytes, size_t *byte_count) {
     int high_nibble = -1;
     size_t count = 0;
 
@@ -338,9 +332,8 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--interface requires a value.");
             }
-            if (copy_arg(config->interface_name,
-                         sizeof(config->interface_name),
-                         argv[i + 1]) != 0) {
+            if (copy_arg(config->interface_name, sizeof(config->interface_name), argv[i + 1]) !=
+                0) {
                 return fail_with_error(program_name, "interface name is too long.");
             }
             i++;
@@ -383,9 +376,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (inet_pton(AF_INET, argv[i + 1], &address) != 1) {
                 return fail_invalid_host(program_name);
             }
-            if (copy_arg(config->filter_host,
-                         sizeof(config->filter_host),
-                         argv[i + 1]) != 0) {
+            if (copy_arg(config->filter_host, sizeof(config->filter_host), argv[i + 1]) != 0) {
                 return fail_invalid_host(program_name);
             }
             config->filter_host_enabled = 1;
@@ -394,9 +385,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--log requires a file path.");
             }
-            if (copy_arg(config->log_path,
-                         sizeof(config->log_path),
-                         argv[i + 1]) != 0) {
+            if (copy_arg(config->log_path, sizeof(config->log_path), argv[i + 1]) != 0) {
                 return fail_with_error(program_name, "log path is too long.");
             }
             config->logging_enabled = 1;
@@ -444,8 +433,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--payload-hex requires a value.");
             }
-            if (parse_payload_hex_pattern(argv[i + 1],
-                                          config->filter_payload_hex,
+            if (parse_payload_hex_pattern(argv[i + 1], config->filter_payload_hex,
                                           &config->filter_payload_hex_length) != 0) {
                 return fail_invalid_payload_hex(program_name);
             }
@@ -467,9 +455,8 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--http-host requires a value.");
             }
-            if (copy_arg(config->filter_http_host,
-                         sizeof(config->filter_http_host),
-                         argv[i + 1]) != 0) {
+            if (copy_arg(config->filter_http_host, sizeof(config->filter_http_host), argv[i + 1]) !=
+                0) {
                 return fail_with_error(program_name, "HTTP host filter is too long.");
             }
             config->filter_http_host_enabled = true;
@@ -478,8 +465,7 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--http-method requires a value.");
             }
-            if (copy_arg(config->filter_http_method,
-                         sizeof(config->filter_http_method),
+            if (copy_arg(config->filter_http_method, sizeof(config->filter_http_method),
                          argv[i + 1]) != 0) {
                 return fail_with_error(program_name, "HTTP method filter is too long.");
             }
@@ -489,9 +475,8 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--dns-query requires a value.");
             }
-            if (copy_arg(config->filter_dns_query,
-                         sizeof(config->filter_dns_query),
-                         argv[i + 1]) != 0) {
+            if (copy_arg(config->filter_dns_query, sizeof(config->filter_dns_query), argv[i + 1]) !=
+                0) {
                 return fail_with_error(program_name, "DNS query filter is too long.");
             }
             config->filter_dns_query_enabled = true;
@@ -510,9 +495,8 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--tls-sni requires a value.");
             }
-            if (copy_arg(config->filter_tls_sni,
-                         sizeof(config->filter_tls_sni),
-                         argv[i + 1]) != 0) {
+            if (copy_arg(config->filter_tls_sni, sizeof(config->filter_tls_sni), argv[i + 1]) !=
+                0) {
                 return fail_with_error(program_name, "TLS SNI filter is too long.");
             }
             config->filter_tls_sni_enabled = true;
@@ -521,9 +505,8 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             if (!has_value(argc, argv, i)) {
                 return fail_with_error(program_name, "--tls-alpn requires a value.");
             }
-            if (copy_arg(config->filter_tls_alpn,
-                         sizeof(config->filter_tls_alpn),
-                         argv[i + 1]) != 0) {
+            if (copy_arg(config->filter_tls_alpn, sizeof(config->filter_tls_alpn), argv[i + 1]) !=
+                0) {
                 return fail_with_error(program_name, "TLS ALPN filter is too long.");
             }
             config->filter_tls_alpn_enabled = true;
@@ -576,14 +559,12 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
     if (config->reassemble && config->max_flows > MINISNIFFER_MAX_FLOWS) {
         return fail_with_error(program_name, "--max-flows exceeds the supported safety limit.");
     }
-    if (config->reassemble &&
-        config->stream_buffer_bytes > MINISNIFFER_MAX_STREAM_BUFFER_BYTES) {
+    if (config->reassemble && config->stream_buffer_bytes > MINISNIFFER_MAX_STREAM_BUFFER_BYTES) {
         return fail_with_error(program_name,
                                "--stream-buffer-bytes exceeds the supported safety limit.");
     }
-    if (config->reassemble &&
-        config->max_flows >
-            MINISNIFFER_MAX_TOTAL_REASSEMBLY_BYTES / 4 / config->stream_buffer_bytes) {
+    if (config->reassemble && config->max_flows > MINISNIFFER_MAX_TOTAL_REASSEMBLY_BYTES / 4 /
+                                                      config->stream_buffer_bytes) {
         return fail_with_error(program_name,
                                "requested flow buffers exceed the aggregate memory limit.");
     }
@@ -592,12 +573,9 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
      * mistyped command does not silently match no packets.
      */
     if (!config->decode_app &&
-        (config->filter_app_enabled ||
-         config->filter_http_host_enabled ||
-         config->filter_http_method_enabled ||
-         config->filter_dns_query_enabled ||
-         config->filter_dns_type_enabled ||
-         config->filter_tls_sni_enabled ||
+        (config->filter_app_enabled || config->filter_http_host_enabled ||
+         config->filter_http_method_enabled || config->filter_dns_query_enabled ||
+         config->filter_dns_type_enabled || config->filter_tls_sni_enabled ||
          config->filter_tls_alpn_enabled)) {
         return fail_with_error(program_name, "app filters require --decode-app.");
     }

@@ -35,8 +35,7 @@ int main(int argc, char **argv) {
     stats_init(&stats);
 
     printf("MiniSniffer starting...\n");
-    printf("Interface: %s\n",
-           config.interface_name[0] == '\0' ? "default" : config.interface_name);
+    printf("Interface: %s\n", config.interface_name[0] == '\0' ? "default" : config.interface_name);
     if (config.max_packets == 0) {
         printf("Max packets: unlimited\n");
     } else {
@@ -69,9 +68,9 @@ int main(int argc, char **argv) {
         printf("Payload preview: %zu bytes\n", config.payload_preview_bytes);
     }
     if (config.filter_app_enabled) {
-        printf("App filter: %s\n",
-               config.filter_app_protocol == APP_PROTO_HTTP ? "http" :
-               config.filter_app_protocol == APP_PROTO_DNS ? "dns" : "tls");
+        printf("App filter: %s\n", config.filter_app_protocol == APP_PROTO_HTTP  ? "http"
+                                   : config.filter_app_protocol == APP_PROTO_DNS ? "dns"
+                                                                                 : "tls");
     }
     if (config.filter_http_host_enabled) {
         printf("HTTP host filter: %s\n", config.filter_http_host);

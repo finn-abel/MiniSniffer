@@ -12,10 +12,6 @@
  * payload_decode_length, and payload_preview_length when present.
  * Returns 0 when the PacketInfo output is initialized successfully.
  */
-int parser_parse_packet(
-    const unsigned char *packet,
-    size_t packet_len,
-    PacketInfo *info
-);
+int parser_parse_packet(const unsigned char *packet, size_t packet_len, PacketInfo *info);
 
 #endif

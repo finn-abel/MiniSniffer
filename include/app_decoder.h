@@ -23,33 +23,22 @@ typedef enum {
  * Uses packet ports and payload signatures to choose a likely decoder.
  * Reads only PacketInfo's bounded payload_decode_length window.
  */
-AppDecodeResult app_decode_packet(
-    const PacketInfo *packet,
-    AppInfo *out
-);
+AppDecodeResult app_decode_packet(const PacketInfo *packet, AppInfo *out);
 
 /*
  * Decodes application metadata from an arbitrary byte buffer.
  * preferred can force one protocol or APP_PROTO_UNKNOWN to sniff signatures.
  * This is the reusable core for future TCP stream reassembly.
  */
-AppDecodeResult app_decode_buffer(
-    AppProtocol preferred,
-    const uint8_t *data,
-    size_t length,
-    AppInfo *out
-);
+AppDecodeResult app_decode_buffer(AppProtocol preferred, const uint8_t *data, size_t length,
+                                  AppInfo *out);
 
 /*
  * Decodes reassembled TCP stream bytes using packet ports as framing hints.
  * DNS-over-TCP keeps its two-byte length prefix here, while HTTP and TLS use
  * the same buffer decoders as packet-local decoding.
  */
-AppDecodeResult app_decode_stream(
-    const PacketInfo *packet,
-    const uint8_t *data,
-    size_t length,
-    AppInfo *out
-);
+AppDecodeResult app_decode_stream(const PacketInfo *packet, const uint8_t *data, size_t length,
+                                  AppInfo *out);
 
 #endif

@@ -24,9 +24,8 @@ static PacketInfo make_packet(void) {
 static AppInfo make_http_app(void) {
     AppInfo app;
 
-    assert(app_http_decode(HTTP_GET_WITH_HOST,
-                           sizeof(HTTP_GET_WITH_HOST) - 1,
-                           &app) == APP_DECODE_OK);
+    assert(app_http_decode(HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1, &app) ==
+           APP_DECODE_OK);
 
     return app;
 }
@@ -34,8 +33,7 @@ static AppInfo make_http_app(void) {
 static AppInfo make_tls_app(void) {
     AppInfo app;
 
-    assert(app_tls_decode_client_hello(TLS_CLIENT_HELLO_SNI_ALPN,
-                                       sizeof(TLS_CLIENT_HELLO_SNI_ALPN),
+    assert(app_tls_decode_client_hello(TLS_CLIENT_HELLO_SNI_ALPN, sizeof(TLS_CLIENT_HELLO_SNI_ALPN),
                                        &app) == APP_DECODE_OK);
 
     return app;

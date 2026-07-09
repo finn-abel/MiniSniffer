@@ -33,10 +33,7 @@ typedef struct {
 /*
  * Direction is relative to the normalized FlowKey endpoints.
  */
-typedef enum {
-    FLOW_DIR_A_TO_B = 0,
-    FLOW_DIR_B_TO_A = 1
-} FlowDirection;
+typedef enum { FLOW_DIR_A_TO_B = 0, FLOW_DIR_B_TO_A = 1 } FlowDirection;
 
 /*
  * Per-direction counters are kept separate from aggregate counters so TCP
@@ -84,12 +81,8 @@ typedef struct {
  * Initializes a bounded flow table.
  * Returns false when allocation fails or max_flows is zero.
  */
-bool flow_table_init(
-    FlowTable *table,
-    size_t max_flows,
-    size_t stream_buffer_bytes,
-    uint32_t timeout_seconds
-);
+bool flow_table_init(FlowTable *table, size_t max_flows, size_t stream_buffer_bytes,
+                     uint32_t timeout_seconds);
 
 /*
  * Releases all memory owned by a flow table.
@@ -106,22 +99,14 @@ bool flow_key_from_packet(const PacketInfo *packet, FlowKey *key, FlowDirection 
  * Looks up an existing flow or creates one after idle/capacity eviction.
  * Returns NULL if no slot is available.
  */
-FlowInfo *flow_table_get_or_create(
-    FlowTable *table,
-    const PacketInfo *packet,
-    uint64_t now_seconds,
-    FlowDirection *direction
-);
+FlowInfo *flow_table_get_or_create(FlowTable *table, const PacketInfo *packet, uint64_t now_seconds,
+                                   FlowDirection *direction);
 
 /*
  * Updates packet/byte counters and last-seen time for one packet.
  */
-void flow_update_packet(
-    FlowInfo *flow,
-    const PacketInfo *packet,
-    uint64_t now_seconds,
-    FlowDirection direction
-);
+void flow_update_packet(FlowInfo *flow, const PacketInfo *packet, uint64_t now_seconds,
+                        FlowDirection direction);
 
 /* Lazily allocates reassembly storage for one active TCP direction. */
 bool flow_prepare_reassembly_direction(FlowInfo *flow, FlowDirection direction);

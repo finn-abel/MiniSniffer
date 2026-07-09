@@ -25,8 +25,7 @@ static void app_info_clear(AppInfo *out) {
 }
 
 static int port_matches(const PacketInfo *packet, uint16_t port) {
-    return packet->has_ports != 0 &&
-           (packet->src_port == port || packet->dst_port == port);
+    return packet->has_ports != 0 && (packet->src_port == port || packet->dst_port == port);
 }
 
 /*
@@ -40,10 +39,8 @@ static int payload_starts_with(const uint8_t *data, size_t length, const char *p
 }
 
 static int payload_starts_with_http(const uint8_t *data, size_t length) {
-    static const char *const prefixes[] = {
-        "GET ", "POST ", "PUT ", "DELETE ", "HEAD ",
-        "OPTIONS ", "PATCH ", "TRACE ", "CONNECT ", "HTTP/"
-    };
+    static const char *const prefixes[] = {"GET ",     "POST ",  "PUT ",   "DELETE ",  "HEAD ",
+                                           "OPTIONS ", "PATCH ", "TRACE ", "CONNECT ", "HTTP/"};
     size_t i;
 
     for (i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++) {
@@ -64,21 +61,15 @@ static int payload_starts_with_tls(const uint8_t *data, size_t length) {
  * match only after the DNS decoder found a first question name.
  */
 static int dns_decode_result_is_strong_match(AppDecodeResult result, const AppInfo *info) {
-    return result == APP_DECODE_OK &&
-           info != NULL &&
-           info->protocol == APP_PROTO_DNS &&
-           info->dns_question_count > 0 &&
-           info->dns_query_name[0] != '\0';
+    return result == APP_DECODE_OK && info != NULL && info->protocol == APP_PROTO_DNS &&
+           info->dns_question_count > 0 && info->dns_query_name[0] != '\0';
 }
 
 /*
  * When a caller selected a preferred protocol from ports, a non-matching
  * payload is malformed for that protocol rather than an unclassified sniff miss.
  */
-static AppDecodeResult preferred_result(
-    AppDecodeResult result,
-    AppProtocol preferred
-) {
+static AppDecodeResult preferred_result(AppDecodeResult result, AppProtocol preferred) {
     if (result == APP_DECODE_NO_MATCH && preferred != APP_PROTO_UNKNOWN) {
         return APP_DECODE_MALFORMED;
     }
@@ -90,12 +81,8 @@ static AppDecodeResult preferred_result(
  * Buffer decoding is protocol-agnostic and does not depend on PacketInfo.
  * Future stream reassembly can pass assembled bytes here directly.
  */
-AppDecodeResult app_decode_buffer(
-    AppProtocol preferred,
-    const uint8_t *data,
-    size_t length,
-    AppInfo *out
-) {
+AppDecodeResult app_decode_buffer(AppProtocol preferred, const uint8_t *data, size_t length,
+                                  AppInfo *out) {
     AppDecodeResult result;
 
     app_info_clear(out);
@@ -149,17 +136,12 @@ AppDecodeResult app_decode_buffer(
  * Without strong hints it falls back to payload signatures and leaves AppInfo
  * UNKNOWN when no decoder succeeds.
  */
-AppDecodeResult app_decode_packet(
-    const PacketInfo *packet,
-    AppInfo *out
-) {
+AppDecodeResult app_decode_packet(const PacketInfo *packet, AppInfo *out) {
     AppDecodeResult result;
 
     app_info_clear(out);
 
-    if (packet == NULL ||
-        packet->has_payload == 0 ||
-        packet->payload == NULL ||
+    if (packet == NULL || packet->has_payload == 0 || packet->payload == NULL ||
         packet->payload_decode_length == 0) {
         return APP_DECODE_NO_MATCH;
     }
@@ -169,28 +151,25 @@ AppDecodeResult app_decode_packet(
      * is DNS-over-TCP with a length prefix, while UDP/53 is a raw DNS message.
      */
     if (packet->protocol == PROTO_TCP &&
-        (port_matches(packet, HTTP_PORT) ||
-         port_matches(packet, HTTP_ALT_PORT) ||
+        (port_matches(packet, HTTP_PORT) || port_matches(packet, HTTP_ALT_PORT) ||
          port_matches(packet, HTTP_DEV_PORT))) {
-        return preferred_result(app_http_decode(packet->payload, packet->payload_decode_length, out),
-                                APP_PROTO_HTTP);
+        return preferred_result(
+            app_http_decode(packet->payload, packet->payload_decode_length, out), APP_PROTO_HTTP);
     }
     if (packet->protocol == PROTO_TCP &&
         (port_matches(packet, TLS_PORT) || port_matches(packet, TLS_ALT_PORT))) {
-        return preferred_result(app_tls_decode_client_hello(packet->payload,
-                                                            packet->payload_decode_length,
-                                                            out),
-                                APP_PROTO_TLS);
+        return preferred_result(
+            app_tls_decode_client_hello(packet->payload, packet->payload_decode_length, out),
+            APP_PROTO_TLS);
     }
     if (packet->protocol == PROTO_UDP && port_matches(packet, DNS_PORT)) {
-        return preferred_result(app_dns_decode_udp(packet->payload, packet->payload_decode_length, out),
-                                APP_PROTO_DNS);
+        return preferred_result(
+            app_dns_decode_udp(packet->payload, packet->payload_decode_length, out), APP_PROTO_DNS);
     }
     if (packet->protocol == PROTO_TCP && port_matches(packet, DNS_PORT)) {
-        return preferred_result(app_dns_decode_tcp_frame(packet->payload,
-                                                         packet->payload_decode_length,
-                                                         out),
-                                APP_PROTO_DNS);
+        return preferred_result(
+            app_dns_decode_tcp_frame(packet->payload, packet->payload_decode_length, out),
+            APP_PROTO_DNS);
     }
 
     if (payload_starts_with_http(packet->payload, packet->payload_decode_length)) {
@@ -215,12 +194,8 @@ AppDecodeResult app_decode_packet(
     return APP_DECODE_NO_MATCH;
 }
 
-AppDecodeResult app_decode_stream(
-    const PacketInfo *packet,
-    const uint8_t *data,
-    size_t length,
-    AppInfo *out
-) {
+AppDecodeResult app_decode_stream(const PacketInfo *packet, const uint8_t *data, size_t length,
+                                  AppInfo *out) {
     app_info_clear(out);
 
     if (packet == NULL || data == NULL || length == 0) {
@@ -228,8 +203,7 @@ AppDecodeResult app_decode_stream(
     }
 
     if (packet->protocol == PROTO_TCP &&
-        (port_matches(packet, HTTP_PORT) ||
-         port_matches(packet, HTTP_ALT_PORT) ||
+        (port_matches(packet, HTTP_PORT) || port_matches(packet, HTTP_ALT_PORT) ||
          port_matches(packet, HTTP_DEV_PORT))) {
         return preferred_result(app_http_decode(data, length, out), APP_PROTO_HTTP);
     }

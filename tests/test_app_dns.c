@@ -31,7 +31,8 @@ static void test_app_dns_decode_udp_query(void) {
 static void test_app_dns_decode_response_with_compressed_question(void) {
     AppInfo info;
 
-    assert(app_dns_decode_message(DNS_COMPRESSED_RESPONSE, sizeof(DNS_COMPRESSED_RESPONSE), &info) == APP_DECODE_OK);
+    assert(app_dns_decode_message(DNS_COMPRESSED_RESPONSE, sizeof(DNS_COMPRESSED_RESPONSE),
+                                  &info) == APP_DECODE_OK);
     assert(info.dns_is_response == 1);
     assert(strcmp(info.dns_query_name, "www.example.com") == 0);
 }
@@ -51,20 +52,23 @@ static void test_app_dns_decode_tcp_frame(void) {
 static void test_app_dns_decode_tcp_frame_need_more(void) {
     AppInfo info;
 
-    assert(app_dns_decode_tcp_frame(DNS_TCP_TRUNCATED_FRAME, sizeof(DNS_TCP_TRUNCATED_FRAME), &info) == APP_DECODE_NEED_MORE);
+    assert(app_dns_decode_tcp_frame(DNS_TCP_TRUNCATED_FRAME, sizeof(DNS_TCP_TRUNCATED_FRAME),
+                                    &info) == APP_DECODE_NEED_MORE);
 }
 
 static void test_app_dns_decode_malformed_pointer_loop(void) {
     AppInfo info;
 
-    assert(app_dns_decode_message(DNS_MALFORMED_POINTER_LOOP, sizeof(DNS_MALFORMED_POINTER_LOOP), &info) == APP_DECODE_MALFORMED);
+    assert(app_dns_decode_message(DNS_MALFORMED_POINTER_LOOP, sizeof(DNS_MALFORMED_POINTER_LOOP),
+                                  &info) == APP_DECODE_MALFORMED);
     assert(info.protocol == APP_PROTO_UNKNOWN);
 }
 
 static void test_app_dns_decode_truncated_message(void) {
     AppInfo info;
 
-    assert(app_dns_decode_message(DNS_TRUNCATED, sizeof(DNS_TRUNCATED), &info) == APP_DECODE_NEED_MORE);
+    assert(app_dns_decode_message(DNS_TRUNCATED, sizeof(DNS_TRUNCATED), &info) ==
+           APP_DECODE_NEED_MORE);
 }
 
 static void test_app_dns_decode_no_match(void) {
@@ -98,11 +102,14 @@ static void test_app_dns_name_parser_rejects_invalid_inputs(void) {
     offset = 0;
     assert(parse_dns_name(bad_pointer, sizeof(bad_pointer), &offset, output, sizeof(output)) != 0);
     offset = 0;
-    assert(parse_dns_name(bad_label_bits, sizeof(bad_label_bits), &offset, output, sizeof(output)) != 0);
+    assert(parse_dns_name(bad_label_bits, sizeof(bad_label_bits), &offset, output,
+                          sizeof(output)) != 0);
     offset = 0;
-    assert(parse_dns_name(truncated_label, sizeof(truncated_label), &offset, output, sizeof(output)) != 0);
+    assert(parse_dns_name(truncated_label, sizeof(truncated_label), &offset, output,
+                          sizeof(output)) != 0);
     offset = 0;
-    assert(parse_dns_name(no_terminator, sizeof(no_terminator), &offset, output, sizeof(output)) != 0);
+    assert(parse_dns_name(no_terminator, sizeof(no_terminator), &offset, output, sizeof(output)) !=
+           0);
     offset = 0;
     assert(parse_dns_name(two_labels, sizeof(two_labels), &offset, output, 3) != 0);
     offset = 0;

@@ -18,9 +18,7 @@ static void compact_buffer(StreamBuffer *buffer) {
         return;
     }
 
-    memmove(buffer->data,
-            buffer->data + buffer->consumed,
-            buffer->length - buffer->consumed);
+    memmove(buffer->data, buffer->data + buffer->consumed, buffer->length - buffer->consumed);
     buffer->length -= buffer->consumed;
     buffer->consumed = 0;
 }

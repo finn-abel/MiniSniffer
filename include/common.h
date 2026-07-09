@@ -12,23 +12,13 @@
  * Parsers assign this value after inspecting packet headers.
  * Filters, logs, and stats use it for consistent behavior.
  */
-typedef enum {
-    PROTO_TCP,
-    PROTO_UDP,
-    PROTO_ICMP,
-    PROTO_OTHER
-} Protocol;
+typedef enum { PROTO_TCP, PROTO_UDP, PROTO_ICMP, PROTO_OTHER } Protocol;
 
 /*
  * AppProtocol describes decoded application-layer metadata. UNKNOWN means no
  * app decoder matched or decoding has not been requested.
  */
-typedef enum {
-    APP_PROTO_UNKNOWN = 0,
-    APP_PROTO_HTTP,
-    APP_PROTO_DNS,
-    APP_PROTO_TLS
-} AppProtocol;
+typedef enum { APP_PROTO_UNKNOWN = 0, APP_PROTO_HTTP, APP_PROTO_DNS, APP_PROTO_TLS } AppProtocol;
 
 #define MINISNIFFER_APP_SUMMARY_LEN 128
 #define MINISNIFFER_TLS_ALPN_LEN 256

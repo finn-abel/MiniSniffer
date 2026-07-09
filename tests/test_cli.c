@@ -136,17 +136,9 @@ static void test_cli_parse_args_sets_payload_hex_filter(void) {
 
 static void test_cli_parse_args_sets_app_decode_options(void) {
     AppConfig config;
-    char *argv[] = {
-        "MiniSniffer",
-        "--decode-app",
-        "--reassemble",
-        "--max-flows",
-        "1024",
-        "--stream-buffer-bytes",
-        "32768",
-        "--flow-timeout",
-        "30"
-    };
+    char *argv[] = {"MiniSniffer", "--decode-app",   "--reassemble",
+                    "--max-flows", "1024",           "--stream-buffer-bytes",
+                    "32768",       "--flow-timeout", "30"};
 
     config_init_defaults(&config);
 
@@ -162,18 +154,13 @@ static void test_cli_parse_args_accepts_supported_app_examples(void) {
     AppConfig config;
     char *decode_app[] = {"MiniSniffer", "--decode-app"};
     char *app_dns[] = {"MiniSniffer", "--decode-app", "--app", "dns"};
-    char *http_host[] = {
-        "MiniSniffer", "--decode-app", "--app", "http", "--http-host", "example.com"
-    };
-    char *tls_sni[] = {
-        "MiniSniffer", "--decode-app", "--app", "tls", "--tls-sni", "example.com"
-    };
-    char *reassembled_tls_sni[] = {
-        "MiniSniffer", "--decode-app", "--reassemble", "--tls-sni", "example.com"
-    };
-    char *stream_buffer[] = {
-        "MiniSniffer", "--decode-app", "--reassemble", "--stream-buffer-bytes", "65536"
-    };
+    char *http_host[] = {"MiniSniffer", "--decode-app", "--app",
+                         "http",        "--http-host",  "example.com"};
+    char *tls_sni[] = {"MiniSniffer", "--decode-app", "--app", "tls", "--tls-sni", "example.com"};
+    char *reassembled_tls_sni[] = {"MiniSniffer", "--decode-app", "--reassemble", "--tls-sni",
+                                   "example.com"};
+    char *stream_buffer[] = {"MiniSniffer", "--decode-app", "--reassemble", "--stream-buffer-bytes",
+                             "65536"};
 
     config_init_defaults(&config);
     assert(cli_parse_args(2, decode_app, &config) == 0);
@@ -206,24 +193,10 @@ static void test_cli_parse_args_accepts_supported_app_examples(void) {
 
 static void test_cli_parse_args_sets_app_filters(void) {
     AppConfig config;
-    char *argv[] = {
-        "MiniSniffer",
-        "--decode-app",
-        "--app",
-        "http",
-        "--http-host",
-        "example.com",
-        "--http-method",
-        "GET",
-        "--dns-query",
-        "example.com",
-        "--dns-type",
-        "A",
-        "--tls-sni",
-        "example.com",
-        "--tls-alpn",
-        "h2"
-    };
+    char *argv[] = {"MiniSniffer", "--decode-app", "--app",         "http",
+                    "--http-host", "example.com",  "--http-method", "GET",
+                    "--dns-query", "example.com",  "--dns-type",    "A",
+                    "--tls-sni",   "example.com",  "--tls-alpn",    "h2"};
 
     config_init_defaults(&config);
 
@@ -246,9 +219,7 @@ static void test_cli_parse_args_sets_app_filters(void) {
 
 static void test_cli_parse_args_accepts_combined_filters(void) {
     AppConfig config;
-    char *argv[] = {
-        "MiniSniffer", "--protocol", "tcp", "--port", "443", "--count", "10"
-    };
+    char *argv[] = {"MiniSniffer", "--protocol", "tcp", "--port", "443", "--count", "10"};
 
     config_init_defaults(&config);
 
@@ -339,29 +310,22 @@ static void test_cli_parse_args_rejects_invalid_app_decode_options(void) {
     AppConfig config;
     char *reassemble_without_decode[] = {"MiniSniffer", "--reassemble"};
     char *max_flows_zero[] = {"MiniSniffer", "--decode-app", "--reassemble", "--max-flows", "0"};
-    char *stream_buffer_negative[] = {
-        "MiniSniffer", "--decode-app", "--reassemble", "--stream-buffer-bytes", "-1"
-    };
-    char *flow_timeout_bad[] = {
-        "MiniSniffer", "--decode-app", "--reassemble", "--flow-timeout", "abc"
-    };
+    char *stream_buffer_negative[] = {"MiniSniffer", "--decode-app", "--reassemble",
+                                      "--stream-buffer-bytes", "-1"};
+    char *flow_timeout_bad[] = {"MiniSniffer", "--decode-app", "--reassemble", "--flow-timeout",
+                                "abc"};
     char *max_flows_without_reassemble[] = {"MiniSniffer", "--decode-app", "--max-flows", "10"};
-    char *stream_buffer_without_reassemble[] = {
-        "MiniSniffer", "--decode-app", "--stream-buffer-bytes", "1024"
-    };
-    char *flow_timeout_without_reassemble[] = {
-        "MiniSniffer", "--decode-app", "--flow-timeout", "10"
-    };
-    char *max_flows_too_large[] = {
-        "MiniSniffer", "--decode-app", "--reassemble", "--max-flows", "1025"
-    };
-    char *stream_buffer_too_large[] = {
-        "MiniSniffer", "--decode-app", "--reassemble", "--stream-buffer-bytes", "1048577"
-    };
-    char *aggregate_memory_too_large[] = {
-        "MiniSniffer", "--decode-app", "--reassemble", "--max-flows", "1024",
-        "--stream-buffer-bytes", "32769"
-    };
+    char *stream_buffer_without_reassemble[] = {"MiniSniffer", "--decode-app",
+                                                "--stream-buffer-bytes", "1024"};
+    char *flow_timeout_without_reassemble[] = {"MiniSniffer", "--decode-app", "--flow-timeout",
+                                               "10"};
+    char *max_flows_too_large[] = {"MiniSniffer", "--decode-app", "--reassemble", "--max-flows",
+                                   "1025"};
+    char *stream_buffer_too_large[] = {"MiniSniffer", "--decode-app", "--reassemble",
+                                       "--stream-buffer-bytes", "1048577"};
+    char *aggregate_memory_too_large[] = {"MiniSniffer", "--decode-app", "--reassemble",
+                                          "--max-flows", "1024",         "--stream-buffer-bytes",
+                                          "32769"};
 
     config_init_defaults(&config);
     assert(cli_parse_args(2, reassemble_without_decode, &config) != 0);
@@ -515,9 +479,8 @@ static void test_cli_parse_args_rejects_empty_and_overflow_values(void) {
     char *payload_text[] = {"MiniSniffer", "--payload-contains", ""};
     char *payload_hex[] = {"MiniSniffer", "--payload-hex", "GG"};
     char *count[] = {"MiniSniffer", "--count", "999999999999999999999999"};
-    char *timeout[] = {
-        "MiniSniffer", "--decode-app", "--reassemble", "--flow-timeout", "4294967296"
-    };
+    char *timeout[] = {"MiniSniffer", "--decode-app", "--reassemble", "--flow-timeout",
+                       "4294967296"};
 
     assert_cli_rejects(3, payload_text);
     assert_cli_rejects(3, payload_hex);

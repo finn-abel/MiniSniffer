@@ -52,14 +52,13 @@ static int read_u24_at(const uint8_t *data, size_t length, size_t *offset, size_
     if (!remaining(length, *offset, 3)) {
         return 1;
     }
-    *out = ((size_t)data[*offset] << 16) |
-           ((size_t)data[*offset + 1] << 8) |
-           data[*offset + 2];
+    *out = ((size_t)data[*offset] << 16) | ((size_t)data[*offset + 1] << 8) | data[*offset + 2];
     *offset += 3;
     return 0;
 }
 
-static void copy_text(char *destination, size_t destination_size, const uint8_t *data, size_t length) {
+static void copy_text(char *destination, size_t destination_size, const uint8_t *data,
+                      size_t length) {
     size_t copy_length;
 
     if (destination == NULL || destination_size == 0) {
@@ -82,8 +81,7 @@ static int parse_sni_extension(const uint8_t *data, size_t length, AppInfo *out)
     size_t list_end;
     uint16_t list_length;
 
-    if (read_u16_at(data, length, &offset, &list_length) != 0 ||
-        list_length != length - offset) {
+    if (read_u16_at(data, length, &offset, &list_length) != 0 || list_length != length - offset) {
         return 1;
     }
     list_end = offset + list_length;
@@ -93,8 +91,7 @@ static int parse_sni_extension(const uint8_t *data, size_t length, AppInfo *out)
         uint16_t name_length;
 
         if (read_u8_at(data, list_end, &offset, &name_type) != 0 ||
-            read_u16_at(data, list_end, &offset, &name_length) != 0 ||
-            name_length == 0 ||
+            read_u16_at(data, list_end, &offset, &name_length) != 0 || name_length == 0 ||
             name_length > list_end - offset) {
             return 1;
         }
@@ -111,7 +108,8 @@ static int parse_sni_extension(const uint8_t *data, size_t length, AppInfo *out)
  * ALPN can advertise multiple protocols. Store them as a bounded comma-separated
  * string for compact display/logging and future filtering.
  */
-static int append_alpn(char *destination, size_t destination_size, const uint8_t *data, size_t length) {
+static int append_alpn(char *destination, size_t destination_size, const uint8_t *data,
+                       size_t length) {
     size_t current_length = strlen(destination);
     size_t copy_length = length;
 
@@ -136,8 +134,7 @@ static int parse_alpn_extension(const uint8_t *data, size_t length, AppInfo *out
     size_t list_end;
     uint16_t list_length;
 
-    if (read_u16_at(data, length, &offset, &list_length) != 0 ||
-        list_length != length - offset) {
+    if (read_u16_at(data, length, &offset, &list_length) != 0 || list_length != length - offset) {
         return 1;
     }
     list_end = offset + list_length;
@@ -145,15 +142,12 @@ static int parse_alpn_extension(const uint8_t *data, size_t length, AppInfo *out
     while (offset < list_end) {
         uint8_t protocol_length;
 
-        if (read_u8_at(data, list_end, &offset, &protocol_length) != 0 ||
-            protocol_length == 0 ||
+        if (read_u8_at(data, list_end, &offset, &protocol_length) != 0 || protocol_length == 0 ||
             protocol_length > list_end - offset) {
             return 1;
         }
-        if (append_alpn(out->tls_alpn,
-                        sizeof(out->tls_alpn),
-                        data + offset,
-                        protocol_length) != 0) {
+        if (append_alpn(out->tls_alpn, sizeof(out->tls_alpn), data + offset, protocol_length) !=
+            0) {
             return 1;
         }
         offset += protocol_length;
@@ -210,11 +204,7 @@ static int parse_extensions(const uint8_t *data, size_t length, size_t offset, A
  * ClientHello body parsing follows the TLS vector order and stops at extensions.
  * Cipher suites and compression methods are validated for length only.
  */
-static AppDecodeResult parse_client_hello_body(
-    const uint8_t *data,
-    size_t length,
-    AppInfo *out
-) {
+static AppDecodeResult parse_client_hello_body(const uint8_t *data, size_t length, AppInfo *out) {
     size_t offset = 0;
     uint8_t session_id_length;
     uint16_t vector_length;
@@ -231,16 +221,13 @@ static AppDecodeResult parse_client_hello_body(
     }
     offset += session_id_length;
 
-    if (read_u16_at(data, length, &offset, &vector_length) != 0 ||
-        vector_length == 0 ||
-        (vector_length % 2) != 0 ||
-        !remaining(length, offset, vector_length)) {
+    if (read_u16_at(data, length, &offset, &vector_length) != 0 || vector_length == 0 ||
+        (vector_length % 2) != 0 || !remaining(length, offset, vector_length)) {
         return APP_DECODE_MALFORMED;
     }
     offset += vector_length;
 
-    if (read_u8_at(data, length, &offset, &session_id_length) != 0 ||
-        session_id_length == 0 ||
+    if (read_u8_at(data, length, &offset, &session_id_length) != 0 || session_id_length == 0 ||
         !remaining(length, offset, session_id_length)) {
         return APP_DECODE_MALFORMED;
     }
@@ -250,10 +237,7 @@ static AppDecodeResult parse_client_hello_body(
         return APP_DECODE_MALFORMED;
     }
 
-    snprintf(out->summary,
-             sizeof(out->summary),
-             "TLS ClientHello sni=%s alpn=%s",
-             out->tls_sni,
+    snprintf(out->summary, sizeof(out->summary), "TLS ClientHello sni=%s alpn=%s", out->tls_sni,
              out->tls_alpn);
     return APP_DECODE_OK;
 }
@@ -263,11 +247,7 @@ static AppDecodeResult parse_client_hello_body(
  * not errors; they are simply not useful for the plaintext metadata MiniSniffer
  * is allowed to inspect.
  */
-AppDecodeResult app_tls_decode_client_hello(
-    const uint8_t *data,
-    size_t length,
-    AppInfo *out
-) {
+AppDecodeResult app_tls_decode_client_hello(const uint8_t *data, size_t length, AppInfo *out) {
     ByteReader reader;
     uint8_t content_type;
     uint16_t record_length;
@@ -287,8 +267,7 @@ AppDecodeResult app_tls_decode_client_hello(
     }
 
     br_init(&reader, data, length);
-    if (!br_read_u8(&reader, &content_type) ||
-        !br_read_u16_be(&reader, &out->tls_record_version) ||
+    if (!br_read_u8(&reader, &content_type) || !br_read_u16_be(&reader, &out->tls_record_version) ||
         !br_read_u16_be(&reader, &record_length)) {
         return APP_DECODE_NEED_MORE;
     }

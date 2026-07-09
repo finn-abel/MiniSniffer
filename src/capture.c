@@ -38,10 +38,7 @@ static int install_sigint_handler(void) {
 }
 
 static void print_open_live_error(const char *device, const char *error_message) {
-    fprintf(stderr,
-            "Error: pcap_open_live failed for interface '%s': %s\n",
-            device,
-            error_message);
+    fprintf(stderr, "Error: pcap_open_live failed for interface '%s': %s\n", device, error_message);
 
     if (strstr(error_message, "Permission") != NULL ||
         strstr(error_message, "permission") != NULL ||
@@ -71,17 +68,13 @@ static int is_apple_internal_device_name(const char *name) {
         return 0;
     }
 
-    return strncmp(name, "ap", 2) == 0 ||
-           strncmp(name, "awdl", 4) == 0 ||
-           strncmp(name, "llw", 3) == 0 ||
-           strncmp(name, "utun", 4) == 0;
+    return strncmp(name, "ap", 2) == 0 || strncmp(name, "awdl", 4) == 0 ||
+           strncmp(name, "llw", 3) == 0 || strncmp(name, "utun", 4) == 0;
 }
 
 static int is_preferred_default_device(const pcap_if_t *device) {
-    return device->name != NULL &&
-           strncmp(device->name, "en", 2) == 0 &&
-           !is_loopback_device(device) &&
-           !is_apple_internal_device_name(device->name) &&
+    return device->name != NULL && strncmp(device->name, "en", 2) == 0 &&
+           !is_loopback_device(device) && !is_apple_internal_device_name(device->name) &&
            has_ipv4_address(device);
 }
 
@@ -105,11 +98,7 @@ static int copy_device_name(char *destination, size_t destination_size, const ch
  * Choose a practical default instead of trusting pcap_lookupdev, which often
  * returns macOS internal interfaces such as ap1.
  */
-static int choose_default_device(
-    char *device_name,
-    size_t device_name_size,
-    char *error_buffer
-) {
+static int choose_default_device(char *device_name, size_t device_name_size, char *error_buffer) {
     pcap_if_t *devices = NULL;
     pcap_if_t *current;
     const char *fallback = NULL;
@@ -130,10 +119,8 @@ static int choose_default_device(
     }
 
     for (current = devices; current != NULL; current = current->next) {
-        if (current->name != NULL &&
-            !is_loopback_device(current) &&
-            !is_apple_internal_device_name(current->name) &&
-            has_ipv4_address(current)) {
+        if (current->name != NULL && !is_loopback_device(current) &&
+            !is_apple_internal_device_name(current->name) && has_ipv4_address(current)) {
             if (copy_device_name(device_name, device_name_size, current->name) != 0) {
                 pcap_freealldevs(devices);
                 return 1;
@@ -144,9 +131,7 @@ static int choose_default_device(
     }
 
     for (current = devices; current != NULL; current = current->next) {
-        if (fallback == NULL &&
-            current->name != NULL &&
-            !is_loopback_device(current) &&
+        if (fallback == NULL && current->name != NULL && !is_loopback_device(current) &&
             !is_apple_internal_device_name(current->name)) {
             fallback = current->name;
         }
@@ -194,31 +179,21 @@ static void set_packet_timestamp(PacketInfo *info, const struct pcap_pkthdr *hea
         return;
     }
 
-    snprintf(info->timestamp,
-             sizeof(info->timestamp),
-             "%ld.%06ld",
-             (long)header->ts.tv_sec,
+    snprintf(info->timestamp, sizeof(info->timestamp), "%ld.%06ld", (long)header->ts.tv_sec,
              (long)header->ts.tv_usec);
 }
 
-static bool flow_decode_stream_app(
-    FlowInfo *flow,
-    FlowDirection direction,
-    const PacketInfo *packet
-) {
+static bool flow_decode_stream_app(FlowInfo *flow, FlowDirection direction,
+                                   const PacketInfo *packet) {
     TcpReassemblyDirection *tcp_state;
     TcpReassemblyResult reassembly_result;
     const uint8_t *stream_data;
     size_t stream_length;
     AppInfo decoded;
 
-    if (flow == NULL ||
-        packet == NULL ||
-        packet->protocol != PROTO_TCP ||
-        packet->has_tcp_sequence == 0 ||
-        packet->has_payload == 0 ||
-        packet->payload_capture_length == 0 ||
-        flow->app_classified ||
+    if (flow == NULL || packet == NULL || packet->protocol != PROTO_TCP ||
+        packet->has_tcp_sequence == 0 || packet->has_payload == 0 ||
+        packet->payload_capture_length == 0 || flow->app_classified ||
         direction > FLOW_DIR_B_TO_A) {
         return false;
     }
@@ -227,11 +202,9 @@ static bool flow_decode_stream_app(
         return false;
     }
     tcp_state = &flow->directions[direction].tcp;
-    reassembly_result = tcp_reassembly_process_segment(tcp_state,
-                                                       packet->tcp_sequence,
-                                                       packet->tcp_flags,
-                                                       packet->payload,
-                                                       packet->payload_capture_length);
+    reassembly_result =
+        tcp_reassembly_process_segment(tcp_state, packet->tcp_sequence, packet->tcp_flags,
+                                       packet->payload, packet->payload_capture_length);
     if (reassembly_result == TCP_REASSEMBLY_DROPPED) {
         return false;
     }
@@ -295,13 +268,8 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
      * Open a live capture handle with conservative local-capture settings:
      * full snap length, non-promiscuous mode, and a one-second timeout.
      */
-    handle = pcap_open_live(
-        device,
-        CAPTURE_SNAPLEN,
-        CAPTURE_PROMISCUOUS,
-        CAPTURE_TIMEOUT_MS,
-        error_buffer
-    );
+    handle = pcap_open_live(device, CAPTURE_SNAPLEN, CAPTURE_PROMISCUOUS, CAPTURE_TIMEOUT_MS,
+                            error_buffer);
     if (handle == NULL) {
         print_open_live_error(device, error_buffer);
         return 1;
@@ -310,16 +278,13 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     if (pcap_datalink(handle) != DLT_EN10MB) {
         fprintf(stderr,
                 "Error: interface '%s' uses unsupported data-link type %d; Ethernet is required.\n",
-                device,
-                pcap_datalink(handle));
+                device, pcap_datalink(handle));
         pcap_close(handle);
         return 1;
     }
 
     if (config->reassemble) {
-        if (!flow_table_init(&flow_table,
-                             config->max_flows,
-                             config->stream_buffer_bytes,
+        if (!flow_table_init(&flow_table, config->max_flows, config->stream_buffer_bytes,
                              config->flow_timeout_seconds)) {
             fprintf(stderr, "Error: failed to initialize flow table.\n");
             pcap_close(handle);
@@ -330,9 +295,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
 
     /* Open output only after capture and optional flow state are ready. */
     if (config->logging_enabled != 0 &&
-        csv_logger_open(config->log_path,
-                        config->decode_app,
-                        config->payload_display_enabled != 0,
+        csv_logger_open(config->log_path, config->decode_app, config->payload_display_enabled != 0,
                         config->payload_preview_bytes) != 0) {
         flow_table_cleanup(&flow_table);
         pcap_close(handle);
@@ -340,8 +303,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     }
 
     while (!should_stop &&
-           (config->max_packets == 0 ||
-            captured_packets < (uint32_t)config->max_packets)) {
+           (config->max_packets == 0 || captured_packets < (uint32_t)config->max_packets)) {
         struct pcap_pkthdr *header = NULL;
         const unsigned char *packet = NULL;
         PacketInfo info;
@@ -395,8 +357,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                     flow_app_ptr = &flow->app;
                     filter_flow_app_ptr = &flow->app;
                     app_source = "flow";
-                } else if (config->decode_app &&
-                           flow_decode_stream_app(flow, direction, &info)) {
+                } else if (config->decode_app && flow_decode_stream_app(flow, direction, &info)) {
                     flow_app_ptr = &flow->app;
                     app_source = "flow";
                 }
@@ -443,8 +404,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         if (config->payload_display_enabled != 0) {
             packet_info_print_payload(&info, config->payload_preview_bytes);
         }
-        if (csv_logger_write_packet(&info,
-                                    packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
+        if (csv_logger_write_packet(&info, packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
                                     app_source) != 0) {
             (void)csv_logger_close();
             flow_table_cleanup(&flow_table);

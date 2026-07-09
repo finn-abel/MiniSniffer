@@ -17,11 +17,8 @@ static void test_tcp_reassembly_accepts_in_order_data(void) {
     TcpReassemblyDirection state;
 
     assert(tcp_reassembly_direction_init(&state, 64));
-    assert(tcp_reassembly_process_segment(&state,
-                                          100,
-                                          0,
-                                          (const uint8_t *)"GET ",
-                                          4) == TCP_REASSEMBLY_ACCEPTED);
+    assert(tcp_reassembly_process_segment(&state, 100, 0, (const uint8_t *)"GET ", 4) ==
+           TCP_REASSEMBLY_ACCEPTED);
     assert(state.initial_sequence_known);
     assert(state.next_sequence == 104);
     assert(stream_buffer_length(&state.stream) == 4);
@@ -94,21 +91,15 @@ static void test_tcp_reassembly_tracks_fin_and_rst(void) {
     TcpReassemblyDirection rst_state;
 
     assert(tcp_reassembly_direction_init(&fin_state, 64));
-    assert(tcp_reassembly_process_segment(&fin_state,
-                                          100,
-                                          TCP_FLAG_FIN,
-                                          NULL,
-                                          0) == TCP_REASSEMBLY_ACCEPTED);
+    assert(tcp_reassembly_process_segment(&fin_state, 100, TCP_FLAG_FIN, NULL, 0) ==
+           TCP_REASSEMBLY_ACCEPTED);
     assert(fin_state.fin_seen);
     assert(fin_state.next_sequence == 101);
     tcp_reassembly_direction_cleanup(&fin_state);
 
     assert(tcp_reassembly_direction_init(&rst_state, 64));
-    assert(tcp_reassembly_process_segment(&rst_state,
-                                          200,
-                                          TCP_FLAG_RST,
-                                          NULL,
-                                          0) == TCP_REASSEMBLY_ACCEPTED);
+    assert(tcp_reassembly_process_segment(&rst_state, 200, TCP_FLAG_RST, NULL, 0) ==
+           TCP_REASSEMBLY_ACCEPTED);
     assert(rst_state.rst_seen);
     tcp_reassembly_direction_cleanup(&rst_state);
 }
@@ -130,11 +121,8 @@ static void test_tcp_reassembly_handles_sequence_wraparound(void) {
     TcpReassemblyDirection state;
 
     assert(tcp_reassembly_direction_init(&state, 64));
-    assert(tcp_reassembly_process_segment(&state,
-                                          UINT32_MAX - 1,
-                                          0,
-                                          (const uint8_t *)"ABC",
-                                          3) == TCP_REASSEMBLY_ACCEPTED);
+    assert(tcp_reassembly_process_segment(&state, UINT32_MAX - 1, 0, (const uint8_t *)"ABC", 3) ==
+           TCP_REASSEMBLY_ACCEPTED);
     assert(state.next_sequence == 1);
     assert(tcp_reassembly_process_segment(&state, 1, 0, (const uint8_t *)"D", 1) ==
            TCP_REASSEMBLY_ACCEPTED);
@@ -149,21 +137,14 @@ static void test_reassembled_http_feeds_existing_decoder(void) {
     const uint8_t tail[] = " HTTP/1.1\r\nHost: example.com\r\n\r\n";
 
     assert(tcp_reassembly_direction_init(&state, 128));
-    assert(tcp_reassembly_process_segment(&state,
-                                          1,
-                                          0,
-                                          (const uint8_t *)"GET /",
-                                          5) == TCP_REASSEMBLY_ACCEPTED);
-    assert(app_decode_buffer(APP_PROTO_HTTP,
-                             stream_buffer_data(&state.stream),
-                             stream_buffer_length(&state.stream),
-                             &app) == APP_DECODE_NEED_MORE);
+    assert(tcp_reassembly_process_segment(&state, 1, 0, (const uint8_t *)"GET /", 5) ==
+           TCP_REASSEMBLY_ACCEPTED);
+    assert(app_decode_buffer(APP_PROTO_HTTP, stream_buffer_data(&state.stream),
+                             stream_buffer_length(&state.stream), &app) == APP_DECODE_NEED_MORE);
     assert(tcp_reassembly_process_segment(&state, 6, 0, tail, sizeof(tail) - 1) ==
            TCP_REASSEMBLY_ACCEPTED);
-    assert(app_decode_buffer(APP_PROTO_HTTP,
-                             stream_buffer_data(&state.stream),
-                             stream_buffer_length(&state.stream),
-                             &app) == APP_DECODE_OK);
+    assert(app_decode_buffer(APP_PROTO_HTTP, stream_buffer_data(&state.stream),
+                             stream_buffer_length(&state.stream), &app) == APP_DECODE_OK);
     assert(strcmp(app.http_method, "GET") == 0);
     assert(strcmp(app.http_host, "example.com") == 0);
     tcp_reassembly_direction_cleanup(&state);
@@ -181,11 +162,9 @@ static void test_tcp_reassembly_rejects_invalid_inputs(void) {
 
     memset(&state, 0, sizeof(state));
     remove_pending_at(&state, 0);
-    assert(tcp_reassembly_process_segment(NULL, 1, 0, &value, 1) ==
-           TCP_REASSEMBLY_DROPPED);
+    assert(tcp_reassembly_process_segment(NULL, 1, 0, &value, 1) == TCP_REASSEMBLY_DROPPED);
     state.unusable = true;
-    assert(tcp_reassembly_process_segment(&state, 1, 0, &value, 1) ==
-           TCP_REASSEMBLY_DROPPED);
+    assert(tcp_reassembly_process_segment(&state, 1, 0, &value, 1) == TCP_REASSEMBLY_DROPPED);
 }
 
 static void test_tcp_reassembly_pending_removal_compacts_entries(void) {
@@ -280,11 +259,8 @@ static void test_tcp_reassembly_handles_syn_fin_and_pending_limit(void) {
 
     assert(payload_sequence(10, TCP_FLAG_SYN) == 11);
     assert(tcp_reassembly_direction_init(&state, 8));
-    assert(tcp_reassembly_process_segment(&state,
-                                          100,
-                                          TCP_FLAG_SYN | TCP_FLAG_FIN,
-                                          (const uint8_t *)"A",
-                                          1) == TCP_REASSEMBLY_ACCEPTED);
+    assert(tcp_reassembly_process_segment(&state, 100, TCP_FLAG_SYN | TCP_FLAG_FIN,
+                                          (const uint8_t *)"A", 1) == TCP_REASSEMBLY_ACCEPTED);
     assert(state.next_sequence == 103);
     tcp_reassembly_direction_cleanup(&state);
 
@@ -303,17 +279,13 @@ static void test_tcp_reassembly_rejects_null_and_huge_payloads(void) {
     uint8_t value = 1;
 
     assert(tcp_reassembly_direction_init(&state, 8));
-    assert(tcp_reassembly_process_segment(&state, 1, 0, NULL, 1) ==
-           TCP_REASSEMBLY_DROPPED);
+    assert(tcp_reassembly_process_segment(&state, 1, 0, NULL, 1) == TCP_REASSEMBLY_DROPPED);
     tcp_reassembly_direction_cleanup(&state);
 
     memset(&state, 0, sizeof(state));
     state.stream.capacity = SIZE_MAX;
-    assert(tcp_reassembly_process_segment(&state,
-                                          1,
-                                          0,
-                                          &value,
-                                          (size_t)UINT32_MAX + 1) == TCP_REASSEMBLY_DROPPED);
+    assert(tcp_reassembly_process_segment(&state, 1, 0, &value, (size_t)UINT32_MAX + 1) ==
+           TCP_REASSEMBLY_DROPPED);
 }
 
 int main(void) {

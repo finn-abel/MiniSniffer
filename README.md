@@ -45,6 +45,21 @@ make
 
 This creates the `MiniSniffer` executable in the project root.
 
+The build uses `pkg-config --cflags --libs libpcap` when libpcap metadata is
+available and falls back to `-lpcap` otherwise. Override `CC`, `CFLAGS`,
+`PKG_CONFIG`, or `LDLIBS` on the `make` command line if your local toolchain
+needs custom settings.
+
+Install or uninstall the executable with:
+
+```sh
+make install
+make uninstall
+```
+
+Both targets honor `PREFIX`, which defaults to `/usr/local`, and `DESTDIR` for
+staged installs.
+
 ## Quick Start
 
 Capture five displayed packets on the automatically selected interface:
@@ -338,7 +353,35 @@ runs `make clean` after the tests complete.
 Run the same suite with AddressSanitizer and UndefinedBehaviorSanitizer:
 
 ```sh
-make test CFLAGS='-Wall -Wextra -Werror -std=c11 -g -fsanitize=address,undefined -fno-omit-frame-pointer'
+make sanitize
+```
+
+Run all available local checks:
+
+```sh
+make check
+```
+
+`make check` runs the unit tests, sanitizer build, format check, and static
+analysis check. Format and static checks are skipped with a message when their
+tools are not installed.
+
+Format source files with clang-format:
+
+```sh
+make format
+```
+
+Check formatting without editing files:
+
+```sh
+make format-check
+```
+
+Run static analysis with clang-tidy when available, or cppcheck when available:
+
+```sh
+make static-check
 ```
 
 Run the full suite with LLVM line and branch coverage:
@@ -348,7 +391,7 @@ make coverage
 ```
 
 The coverage profile, line-by-line report, JSON summary, and captured test
-output are written to `/tmp/packetscope-coverage` by default. Set
+output are written to `/tmp/minisniffer-coverage` by default. Set
 `COVERAGE_DIR` to use another directory.
 
 Rebuild the executable after running tests:
@@ -429,7 +472,7 @@ Examples:
 include/          Public headers
 src/              MiniSniffer implementation
 tests/            Unit tests
-Makefile          Build, test, and clean targets
+Makefile          Build, test, check, install, and clean targets
 README.md         Project documentation
 ```
 

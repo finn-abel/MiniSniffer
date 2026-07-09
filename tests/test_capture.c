@@ -62,13 +62,8 @@ void test_pcap_freealldevs(pcap_if_t *devices) {
     fake_pcap.free_count++;
 }
 
-pcap_t *test_pcap_open_live(
-    const char *device,
-    int snaplen,
-    int promiscuous,
-    int timeout_ms,
-    char *error_buffer
-) {
+pcap_t *test_pcap_open_live(const char *device, int snaplen, int promiscuous, int timeout_ms,
+                            char *error_buffer) {
     (void)device;
     (void)snaplen;
     (void)promiscuous;
@@ -87,11 +82,7 @@ int test_pcap_datalink(pcap_t *handle) {
     return fake_pcap.datalink;
 }
 
-int test_pcap_next_ex(
-    pcap_t *handle,
-    struct pcap_pkthdr **header,
-    const unsigned char **packet
-) {
+int test_pcap_next_ex(pcap_t *handle, struct pcap_pkthdr **header, const unsigned char **packet) {
     size_t index;
     int result;
 
@@ -119,12 +110,8 @@ void test_pcap_close(pcap_t *handle) {
     fake_pcap.close_count++;
 }
 
-static pcap_if_t make_device(
-    char *name,
-    unsigned int flags,
-    pcap_addr_t *addresses,
-    pcap_if_t *next
-) {
+static pcap_if_t make_device(char *name, unsigned int flags, pcap_addr_t *addresses,
+                             pcap_if_t *next) {
     pcap_if_t device;
 
     memset(&device, 0, sizeof(device));
@@ -157,13 +144,8 @@ static void set_single_device(pcap_if_t *device) {
     device->next = NULL;
 }
 
-static size_t build_tcp_packet(
-    unsigned char *packet,
-    size_t packet_capacity,
-    uint32_t sequence,
-    const uint8_t *payload,
-    size_t payload_length
-) {
+static size_t build_tcp_packet(unsigned char *packet, size_t packet_capacity, uint32_t sequence,
+                               const uint8_t *payload, size_t payload_length) {
     const size_t ethernet_length = 14;
     const size_t ipv4_length = 20;
     const size_t tcp_length = 20;
@@ -413,11 +395,8 @@ static void test_capture_loop_handles_timeout_error_and_bad_packet(void) {
 static void test_capture_processes_and_filters_packets(void) {
     static const uint8_t http_request[] = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
     unsigned char packet[256];
-    size_t packet_length = build_tcp_packet(packet,
-                                            sizeof(packet),
-                                            100,
-                                            http_request,
-                                            sizeof(http_request) - 1);
+    size_t packet_length =
+        build_tcp_packet(packet, sizeof(packet), 100, http_request, sizeof(http_request) - 1);
     char device_name[] = "en-test";
     pcap_if_t device = make_device(device_name, 0, NULL, NULL);
     AppConfig config = make_capture_config(device_name);
@@ -461,24 +440,17 @@ static void test_capture_reassembles_split_http_and_logs(void) {
     pcap_if_t device = make_device(device_name, 0, NULL, NULL);
     AppConfig config = make_capture_config(device_name);
     PacketStats stats;
-    const char *log_path = "/tmp/packetscope_capture_test.csv";
+    const char *log_path = "/tmp/minisniffer_capture_test.csv";
 
-    first_length = build_tcp_packet(first_packet,
-                                    sizeof(first_packet),
-                                    100,
-                                    first_payload,
+    first_length = build_tcp_packet(first_packet, sizeof(first_packet), 100, first_payload,
                                     sizeof(first_payload) - 1);
-    second_length = build_tcp_packet(second_packet,
-                                     sizeof(second_packet),
-                                     100 + (uint32_t)(sizeof(first_payload) - 1),
-                                     second_payload,
+    second_length = build_tcp_packet(second_packet, sizeof(second_packet),
+                                     100 + (uint32_t)(sizeof(first_payload) - 1), second_payload,
                                      sizeof(second_payload) - 1);
-    third_length = build_tcp_packet(third_packet,
-                                    sizeof(third_packet),
+    third_length = build_tcp_packet(third_packet, sizeof(third_packet),
                                     100 + (uint32_t)(sizeof(first_payload) - 1) +
                                         (uint32_t)(sizeof(second_payload) - 1),
-                                    third_payload,
-                                    sizeof(third_payload) - 1);
+                                    third_payload, sizeof(third_payload) - 1);
 
     reset_fake_pcap();
     set_single_device(&device);

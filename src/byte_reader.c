@@ -65,8 +65,7 @@ bool br_read_u32_be(ByteReader *reader, uint32_t *out) {
 
     *out = ((uint32_t)reader->data[reader->offset] << 24) |
            ((uint32_t)reader->data[reader->offset + 1] << 16) |
-           ((uint32_t)reader->data[reader->offset + 2] << 8) |
-           reader->data[reader->offset + 3];
+           ((uint32_t)reader->data[reader->offset + 2] << 8) | reader->data[reader->offset + 3];
     reader->offset += 4;
     return true;
 }

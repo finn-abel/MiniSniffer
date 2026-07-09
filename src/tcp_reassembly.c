@@ -46,8 +46,7 @@ static void remove_pending_at(TcpReassemblyDirection *state, size_t index) {
     }
     clear_pending_segment(&state->pending[index]);
     if (index + 1 < state->pending_count) {
-        memmove(&state->pending[index],
-                &state->pending[index + 1],
+        memmove(&state->pending[index], &state->pending[index + 1],
                 (state->pending_count - index - 1) * sizeof(state->pending[0]));
     }
     state->pending_count--;
@@ -108,18 +107,12 @@ static bool flush_pending_segments(TcpReassemblyDirection *state) {
  * Out-of-order payload is copied into a bounded side buffer. Both segment count
  * and total bytes are capped so a flow cannot accumulate unbounded gaps.
  */
-static bool store_out_of_order_segment(
-    TcpReassemblyDirection *state,
-    uint32_t sequence,
-    const uint8_t *payload,
-    size_t payload_length
-) {
+static bool store_out_of_order_segment(TcpReassemblyDirection *state, uint32_t sequence,
+                                       const uint8_t *payload, size_t payload_length) {
     TcpOutOfOrderSegment *segment;
 
-    if (state->pending_count >= TCP_REASSEMBLY_MAX_PENDING_SEGMENTS ||
-        payload == NULL ||
-        payload_length == 0 ||
-        payload_length > state->pending_byte_cap ||
+    if (state->pending_count >= TCP_REASSEMBLY_MAX_PENDING_SEGMENTS || payload == NULL ||
+        payload_length == 0 || payload_length > state->pending_byte_cap ||
         payload_length > state->pending_byte_cap - state->pending_bytes) {
         return false;
     }
@@ -178,13 +171,9 @@ void tcp_reassembly_direction_cleanup(TcpReassemblyDirection *state) {
  * buffer simple future data, trim overlaps, and drop anything that would exceed
  * fixed memory caps. It does not try to model every TCP edge case yet.
  */
-TcpReassemblyResult tcp_reassembly_process_segment(
-    TcpReassemblyDirection *state,
-    uint32_t sequence,
-    uint8_t flags,
-    const uint8_t *payload,
-    size_t payload_length
-) {
+TcpReassemblyResult tcp_reassembly_process_segment(TcpReassemblyDirection *state, uint32_t sequence,
+                                                   uint8_t flags, const uint8_t *payload,
+                                                   size_t payload_length) {
     uint32_t data_sequence;
     uint32_t segment_end;
 
@@ -209,7 +198,8 @@ TcpReassemblyResult tcp_reassembly_process_segment(
     }
 
     if (payload_length == 0) {
-        if ((flags & TCP_FLAG_FIN) != 0 && state->next_sequence == payload_sequence(sequence, flags)) {
+        if ((flags & TCP_FLAG_FIN) != 0 &&
+            state->next_sequence == payload_sequence(sequence, flags)) {
             state->next_sequence++;
         }
         return TCP_REASSEMBLY_ACCEPTED;

@@ -12,7 +12,8 @@
 static void test_app_http_decode_request(void) {
     AppInfo info;
 
-    assert(app_http_decode(HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1, &info) == APP_DECODE_OK);
+    assert(app_http_decode(HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1, &info) ==
+           APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_HTTP);
     assert(strcmp(info.http_method, "GET") == 0);
     assert(strcmp(info.http_path, "/index.html") == 0);
@@ -24,7 +25,8 @@ static void test_app_http_decode_request(void) {
 static void test_app_http_decode_response(void) {
     AppInfo info;
 
-    assert(app_http_decode(HTTP_RESPONSE_STATUS, sizeof(HTTP_RESPONSE_STATUS) - 1, &info) == APP_DECODE_OK);
+    assert(app_http_decode(HTTP_RESPONSE_STATUS, sizeof(HTTP_RESPONSE_STATUS) - 1, &info) ==
+           APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_HTTP);
     assert(strcmp(info.http_version, "HTTP/1.1") == 0);
     assert(info.http_status_code == 200);
@@ -35,7 +37,8 @@ static void test_app_http_decode_response(void) {
 static void test_app_http_decode_incomplete_header(void) {
     AppInfo info;
 
-    assert(app_http_decode(HTTP_TRUNCATED_HEADERS, sizeof(HTTP_TRUNCATED_HEADERS) - 1, &info) == APP_DECODE_NEED_MORE);
+    assert(app_http_decode(HTTP_TRUNCATED_HEADERS, sizeof(HTTP_TRUNCATED_HEADERS) - 1, &info) ==
+           APP_DECODE_NEED_MORE);
 }
 
 static void test_app_http_decode_no_match(void) {
@@ -47,7 +50,8 @@ static void test_app_http_decode_no_match(void) {
 static void test_app_http_decode_malformed_request(void) {
     AppInfo info;
 
-    assert(app_http_decode(HTTP_MALFORMED, sizeof(HTTP_MALFORMED) - 1, &info) == APP_DECODE_MALFORMED);
+    assert(app_http_decode(HTTP_MALFORMED, sizeof(HTTP_MALFORMED) - 1, &info) ==
+           APP_DECODE_MALFORMED);
     assert(info.protocol == APP_PROTO_UNKNOWN);
 }
 
@@ -100,11 +104,10 @@ static void test_app_http_rejects_malformed_status_lines(void) {
 }
 
 static void test_app_http_parses_trimmed_truncated_headers(void) {
-    static const uint8_t request[] =
-        "POST / HTTP/1.1\r\n"
-        "Host:   very-long-host-name.example.com   \r\n"
-        "X-Other: ignored\r\n"
-        "\r\n";
+    static const uint8_t request[] = "POST / HTTP/1.1\r\n"
+                                     "Host:   very-long-host-name.example.com   \r\n"
+                                     "X-Other: ignored\r\n"
+                                     "\r\n";
     AppInfo info;
 
     assert(app_http_decode_white_box(request, sizeof(request) - 1, &info) == APP_DECODE_OK);

@@ -20,15 +20,15 @@ static size_t payload_logging_limit = MINISNIFFER_DEFAULT_PAYLOAD_PREVIEW_BYTES;
  */
 static const char *app_protocol_to_string(AppProtocol protocol) {
     switch (protocol) {
-        case APP_PROTO_HTTP:
-            return "http";
-        case APP_PROTO_DNS:
-            return "dns";
-        case APP_PROTO_TLS:
-            return "tls";
-        case APP_PROTO_UNKNOWN:
-        default:
-            return "";
+    case APP_PROTO_HTTP:
+        return "http";
+    case APP_PROTO_DNS:
+        return "dns";
+    case APP_PROTO_TLS:
+        return "tls";
+    case APP_PROTO_UNKNOWN:
+    default:
+        return "";
     }
 }
 
@@ -135,8 +135,12 @@ static void write_payload_ascii(FILE *file, const PacketInfo *info) {
  */
 static int write_header(const char *path) {
     if (app_columns_enabled) {
-        if (fprintf(log_file,
-                    "timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source\n") < 0) {
+        if (fprintf(
+                log_file,
+                "timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_"
+                "protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,"
+                "dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source\n") <
+            0) {
             fprintf(stderr, "Error: failed to write CSV header to '%s'.\n", path);
             return 1;
         }
@@ -144,8 +148,8 @@ static int write_header(const char *path) {
     }
 
     if (payload_columns_enabled) {
-        if (fprintf(log_file,
-                    "packet_number,protocol,src_ip,src_port,dst_ip,dst_port,size,payload_length,payload_hex,payload_ascii\n") < 0) {
+        if (fprintf(log_file, "packet_number,protocol,src_ip,src_port,dst_ip,dst_port,size,payload_"
+                              "length,payload_hex,payload_ascii\n") < 0) {
             fprintf(stderr, "Error: failed to write CSV header to '%s'.\n", path);
             return 1;
         }
@@ -164,12 +168,8 @@ static int write_header(const char *path) {
  * The chosen schema is fixed at open time so every row in one file has the same
  * column layout.
  */
-int csv_logger_open(
-    const char *path,
-    bool enable_app_columns,
-    bool enable_payload_columns,
-    size_t payload_preview_limit
-) {
+int csv_logger_open(const char *path, bool enable_app_columns, bool enable_payload_columns,
+                    size_t payload_preview_limit) {
     int fd;
 
     if (path == NULL || path[0] == '\0') {
@@ -195,8 +195,7 @@ int csv_logger_open(
 
         close(fd);
         unlink(path);
-        fprintf(stderr, "Error: cannot initialize log file '%s': %s\n",
-                path,
+        fprintf(stderr, "Error: cannot initialize log file '%s': %s\n", path,
                 strerror(saved_errno));
         return 1;
     }
@@ -216,16 +215,11 @@ int csv_logger_open(
  */
 static void write_legacy_packet(const PacketInfo *info) {
     if (payload_columns_enabled) {
-        fprintf(log_file,
-                "%u,%s,%s,",
-                info->packet_number,
-                protocol_to_string(info->protocol),
+        fprintf(log_file, "%u,%s,%s,", info->packet_number, protocol_to_string(info->protocol),
                 info->src_ip);
 
         if (info->has_ports != 0) {
-            fprintf(log_file, "%u,%s,%u,",
-                    (unsigned int)info->src_port,
-                    info->dst_ip,
+            fprintf(log_file, "%u,%s,%u,", (unsigned int)info->src_port, info->dst_ip,
                     (unsigned int)info->dst_port);
         } else {
             fprintf(log_file, ",%s,,", info->dst_ip);
@@ -240,25 +234,14 @@ static void write_legacy_packet(const PacketInfo *info) {
     }
 
     if (info->has_ports != 0) {
-        fprintf(log_file,
-                "%u,%s,%s,%u,%s,%u,%zu\n",
-                info->packet_number,
-                protocol_to_string(info->protocol),
-                info->src_ip,
-                (unsigned int)info->src_port,
-                info->dst_ip,
-                (unsigned int)info->dst_port,
-                info->size);
+        fprintf(log_file, "%u,%s,%s,%u,%s,%u,%zu\n", info->packet_number,
+                protocol_to_string(info->protocol), info->src_ip, (unsigned int)info->src_port,
+                info->dst_ip, (unsigned int)info->dst_port, info->size);
         return;
     }
 
-    fprintf(log_file,
-            "%u,%s,%s,,%s,,%zu\n",
-            info->packet_number,
-            protocol_to_string(info->protocol),
-            info->src_ip,
-            info->dst_ip,
-            info->size);
+    fprintf(log_file, "%u,%s,%s,,%s,,%zu\n", info->packet_number,
+            protocol_to_string(info->protocol), info->src_ip, info->dst_ip, info->size);
 }
 
 /*
@@ -313,9 +296,7 @@ static void write_app_packet(const PacketInfo *packet, const AppInfo *app, const
     write_csv_text(log_file, packet->dst_ip);
     fprintf(log_file, ",");
     write_optional_port(packet, packet->dst_port);
-    fprintf(log_file, ",%s,%zu,%s,",
-            protocol_to_string(packet->protocol),
-            packet->size,
+    fprintf(log_file, ",%s,%zu,%s,", protocol_to_string(packet->protocol), packet->size,
             app_protocol_to_string(row_app->protocol));
 
     write_csv_text(log_file, row_app->http_method);
@@ -354,11 +335,7 @@ static void write_app_packet(const PacketInfo *packet, const AppInfo *app, const
 /*
  * Public write path: app schema when enabled, otherwise legacy packet schema.
  */
-int csv_logger_write_packet(
-    const PacketInfo *packet,
-    const AppInfo *app,
-    const char *app_source
-) {
+int csv_logger_write_packet(const PacketInfo *packet, const AppInfo *app, const char *app_source) {
     if (log_file == NULL || packet == NULL) {
         return 0;
     }

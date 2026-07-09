@@ -59,12 +59,8 @@ static void set_ipv4_protocol(unsigned char protocol_number, PacketInfo *info) {
  * TCP ports are the first four bytes of the TCP header.
  * Only parse them after confirming the captured packet includes the minimum header.
  */
-static void parse_tcp_ports(
-    const unsigned char *packet,
-    size_t packet_len,
-    size_t tcp_offset,
-    PacketInfo *info
-) {
+static void parse_tcp_ports(const unsigned char *packet, size_t packet_len, size_t tcp_offset,
+                            PacketInfo *info) {
     const unsigned char *tcp_header;
 
     if (packet_len < tcp_offset + TCP_MIN_HEADER_LEN) {
@@ -81,12 +77,8 @@ static void parse_tcp_ports(
  * TCP sequence and flags are needed only by flow reassembly. They stay in
  * PacketInfo as raw TCP metadata, separate from application decoding.
  */
-static void parse_tcp_sequence_and_flags(
-    const unsigned char *packet,
-    size_t packet_len,
-    size_t tcp_offset,
-    PacketInfo *info
-) {
+static void parse_tcp_sequence_and_flags(const unsigned char *packet, size_t packet_len,
+                                         size_t tcp_offset, PacketInfo *info) {
     const unsigned char *tcp_header;
 
     if (packet_len < tcp_offset + TCP_MIN_HEADER_LEN) {
@@ -103,12 +95,8 @@ static void parse_tcp_sequence_and_flags(
  * UDP ports are the first four bytes of the fixed eight-byte UDP header.
  * If the capture is truncated before the full UDP header, leave ports unset.
  */
-static void parse_udp_ports(
-    const unsigned char *packet,
-    size_t packet_len,
-    size_t udp_offset,
-    PacketInfo *info
-) {
+static void parse_udp_ports(const unsigned char *packet, size_t packet_len, size_t udp_offset,
+                            PacketInfo *info) {
     const unsigned char *udp_header;
 
     if (packet_len < udp_offset + UDP_HEADER_LEN) {
@@ -124,12 +112,8 @@ static void parse_udp_ports(
     info->has_ports = 1;
 }
 
-static void parse_payload(
-    const unsigned char *packet,
-    size_t packet_len,
-    size_t payload_offset,
-    PacketInfo *info
-) {
+static void parse_payload(const unsigned char *packet, size_t packet_len, size_t payload_offset,
+                          PacketInfo *info) {
     size_t available;
 
     if (packet_len <= payload_offset) {
@@ -161,12 +145,8 @@ static void parse_payload(
  * TCP has a variable-length header.
  * The data offset field in byte 12 tells us where payload bytes begin.
  */
-static void parse_tcp_payload(
-    const unsigned char *packet,
-    size_t packet_len,
-    size_t tcp_offset,
-    PacketInfo *info
-) {
+static void parse_tcp_payload(const unsigned char *packet, size_t packet_len, size_t tcp_offset,
+                              PacketInfo *info) {
     const unsigned char *tcp_header;
     size_t tcp_header_len;
 
@@ -190,12 +170,8 @@ static void parse_tcp_payload(
 /*
  * UDP has a fixed eight-byte header, so payload begins immediately after it.
  */
-static void parse_udp_payload(
-    const unsigned char *packet,
-    size_t packet_len,
-    size_t udp_offset,
-    PacketInfo *info
-) {
+static void parse_udp_payload(const unsigned char *packet, size_t packet_len, size_t udp_offset,
+                              PacketInfo *info) {
     uint16_t udp_length;
 
     if (packet_len < udp_offset + UDP_HEADER_LEN) {
@@ -220,12 +196,8 @@ static void parse_udp_payload(
  * ICMP's common header is eight bytes for the packet types MiniSniffer displays.
  * Anything captured after that is treated as ICMP payload preview data.
  */
-static void parse_icmp_payload(
-    const unsigned char *packet,
-    size_t packet_len,
-    size_t icmp_offset,
-    PacketInfo *info
-) {
+static void parse_icmp_payload(const unsigned char *packet, size_t packet_len, size_t icmp_offset,
+                               PacketInfo *info) {
     if (packet_len < icmp_offset + ICMP_HEADER_LEN) {
         return;
     }
@@ -243,11 +215,7 @@ static void clear_transport_ports(PacketInfo *info) {
     info->has_ports = 0;
 }
 
-int parser_parse_packet(
-    const unsigned char *packet,
-    size_t packet_len,
-    PacketInfo *info
-) {
+int parser_parse_packet(const unsigned char *packet, size_t packet_len, PacketInfo *info) {
     const unsigned char *ip_header;
     uint16_t ether_type_network;
     uint16_t ether_type;
@@ -316,10 +284,9 @@ int parser_parse_packet(
         return 0;
     }
     captured_ip_length = packet_len - ETHERNET_HEADER_LEN;
-    parsed_packet_len = ETHERNET_HEADER_LEN +
-        (captured_ip_length < (size_t)ip_total_length
-             ? captured_ip_length
-             : (size_t)ip_total_length);
+    parsed_packet_len = ETHERNET_HEADER_LEN + (captured_ip_length < (size_t)ip_total_length
+                                                   ? captured_ip_length
+                                                   : (size_t)ip_total_length);
 
     /*
      * inet_ntop handles byte-order details for IPv4 address presentation.
@@ -352,7 +319,8 @@ int parser_parse_packet(
 
     if (info->protocol == PROTO_TCP) {
         parse_tcp_ports(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
-        parse_tcp_sequence_and_flags(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
+        parse_tcp_sequence_and_flags(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len,
+                                     info);
         parse_tcp_payload(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);
     } else if (info->protocol == PROTO_UDP) {
         parse_udp_ports(packet, parsed_packet_len, ETHERNET_HEADER_LEN + ip_header_len, info);

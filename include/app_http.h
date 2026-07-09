@@ -12,10 +12,6 @@
  * Parses only the start line and headers; bodies are intentionally ignored.
  * Returns NEED_MORE when the HTTP header terminator has not arrived yet.
  */
-AppDecodeResult app_http_decode(
-    const uint8_t *data,
-    size_t length,
-    AppInfo *out
-);
+AppDecodeResult app_http_decode(const uint8_t *data, size_t length, AppInfo *out);
 
 #endif

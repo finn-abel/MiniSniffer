@@ -32,9 +32,8 @@ static PacketInfo make_packet(void) {
 static AppInfo make_http_app(void) {
     AppInfo app;
 
-    assert(app_http_decode(HTTP_GET_WITH_HOST,
-                           sizeof(HTTP_GET_WITH_HOST) - 1,
-                           &app) == APP_DECODE_OK);
+    assert(app_http_decode(HTTP_GET_WITH_HOST, sizeof(HTTP_GET_WITH_HOST) - 1, &app) ==
+           APP_DECODE_OK);
 
     return app;
 }
@@ -54,12 +53,18 @@ static void test_csv_logger_writes_app_schema(void) {
     assert(file != NULL);
 
     assert(fgets(line, sizeof(line), file) != NULL);
-    assert(strcmp(line,
-                  "timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source\n") == 0);
+    assert(
+        strcmp(line,
+               "timestamp,src_ip,src_port,dst_ip,dst_port,transport_protocol,packet_length,app_"
+               "protocol,http_method,http_host,http_path,http_status,dns_query,dns_type,dns_class,"
+               "dns_rcode,tls_sni,tls_alpn,tls_record_version,tls_client_version,app_source\n") ==
+        0);
 
     assert(fgets(line, sizeof(line), file) != NULL);
     assert(strcmp(line,
-                  "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,http,\"GET\",\"example.com\",\"/index.html\",,\"\",,,0,\"\",\"\",,,\"packet\"\n") == 0);
+                  "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,http,"
+                  "\"GET\",\"example.com\",\"/index.html\",,\"\",,,0,\"\",\"\",,,\"packet\"\n") ==
+           0);
 
     fclose(file);
     remove(TEST_CSV_LOG_PATH);
@@ -109,7 +114,9 @@ static void test_csv_logger_escapes_quotes_and_commas(void) {
     assert(fgets(line, sizeof(line), file) != NULL);
     assert(fgets(line, sizeof(line), file) != NULL);
     assert(strcmp(line,
-                  "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,http,\"GE\"\"T\",\"exa\"\"mple,com\",\"/a,\"\"b\"\"\",,\"\",,,0,\"\",\"h2,\"\"http/1.1\"\"\",,,\"packet\"\n") == 0);
+                  "\"1710000000.123456\",\"192.168.1.25\",51432,\"93.184.216.34\",80,TCP,512,"
+                  "http,\"GE\"\"T\",\"exa\"\"mple,com\",\"/"
+                  "a,\"\"b\"\"\",,\"\",,,0,\"\",\"h2,\"\"http/1.1\"\"\",,,\"packet\"\n") == 0);
 
     fclose(file);
     remove(TEST_CSV_LOG_PATH);
@@ -224,9 +231,7 @@ static void test_csv_logger_caps_payload_preview_limit(void) {
     memcpy(packet.payload_preview, "ABCD", 4);
 
     remove(TEST_CSV_LOG_PATH);
-    assert(csv_logger_open(TEST_CSV_LOG_PATH,
-                           false,
-                           true,
+    assert(csv_logger_open(TEST_CSV_LOG_PATH, false, true,
                            MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES + 1) == 0);
     assert(csv_logger_close() == 0);
     remove(TEST_CSV_LOG_PATH);

@@ -5,13 +5,8 @@
 #include "config.h"
 #include "flow.h"
 
-static PacketInfo make_tcp_packet(
-    const char *src_ip,
-    uint16_t src_port,
-    const char *dst_ip,
-    uint16_t dst_port,
-    size_t size
-) {
+static PacketInfo make_tcp_packet(const char *src_ip, uint16_t src_port, const char *dst_ip,
+                                  uint16_t dst_port, size_t size) {
     PacketInfo packet;
 
     memset(&packet, 0, sizeof(packet));
@@ -116,12 +111,9 @@ static void test_flow_table_caps_max_flows(void) {
 static int flow_matches_packet(const FlowInfo *flow, const PacketInfo *packet) {
     FlowKey key;
 
-    return flow != NULL &&
-           flow_key_from_packet(packet, &key, NULL) &&
-           flow->key.a_ip.ipv4 == key.a_ip.ipv4 &&
-           flow->key.a_port == key.a_port &&
-           flow->key.b_ip.ipv4 == key.b_ip.ipv4 &&
-           flow->key.b_port == key.b_port &&
+    return flow != NULL && flow_key_from_packet(packet, &key, NULL) &&
+           flow->key.a_ip.ipv4 == key.a_ip.ipv4 && flow->key.a_port == key.a_port &&
+           flow->key.b_ip.ipv4 == key.b_ip.ipv4 && flow->key.b_port == key.b_port &&
            flow->key.transport_protocol == key.transport_protocol;
 }
 

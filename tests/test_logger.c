@@ -97,12 +97,15 @@ static void test_logger_writes_payload_columns_when_enabled(void) {
     assert(file != NULL);
 
     assert(fgets(line, sizeof(line), file) != NULL);
-    assert(strcmp(line,
-                  "packet_number,protocol,src_ip,src_port,dst_ip,dst_port,size,payload_length,payload_hex,payload_ascii\n") == 0);
+    assert(strcmp(line, "packet_number,protocol,src_ip,src_port,dst_ip,dst_port,size,payload_"
+                        "length,payload_hex,payload_ascii\n") == 0);
 
     assert(fgets(line, sizeof(line), file) != NULL);
-    assert(strcmp(line,
-                  "1,TCP,192.168.1.25,51432,142.250.190.14,443,1280,5,\"47 45 54 20 2f\",\"GET /\"\n") == 0);
+    assert(
+        strcmp(
+            line,
+            "1,TCP,192.168.1.25,51432,142.250.190.14,443,1280,5,\"47 45 54 20 2f\",\"GET /\"\n") ==
+        0);
 
     fclose(file);
     remove(TEST_LOG_PATH);

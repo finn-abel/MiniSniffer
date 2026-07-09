@@ -43,7 +43,8 @@ static bool parse_ipv4_address(const char *text, IPAddress *address) {
 /*
  * Endpoint ordering gives TCP a stable direction-independent identity.
  */
-static int compare_endpoint(IPAddress left_ip, uint16_t left_port, IPAddress right_ip, uint16_t right_port) {
+static int compare_endpoint(IPAddress left_ip, uint16_t left_port, IPAddress right_ip,
+                            uint16_t right_port) {
     if (left_ip.ipv4 < right_ip.ipv4) {
         return -1;
     }
@@ -65,10 +66,8 @@ static int compare_endpoint(IPAddress left_ip, uint16_t left_port, IPAddress rig
  * comparison with no allocated ownership involved.
  */
 static bool flow_key_equals(const FlowKey *left, const FlowKey *right) {
-    return left->a_ip.ipv4 == right->a_ip.ipv4 &&
-           left->a_port == right->a_port &&
-           left->b_ip.ipv4 == right->b_ip.ipv4 &&
-           left->b_port == right->b_port &&
+    return left->a_ip.ipv4 == right->a_ip.ipv4 && left->a_port == right->a_port &&
+           left->b_ip.ipv4 == right->b_ip.ipv4 && left->b_port == right->b_port &&
            left->transport_protocol == right->transport_protocol;
 }
 
@@ -85,8 +84,7 @@ static void remove_flow_at(FlowTable *table, size_t index) {
     tcp_reassembly_direction_cleanup(&table->flows[index].directions[FLOW_DIR_B_TO_A].tcp);
 
     if (index + 1 < table->count) {
-        memmove(&table->flows[index],
-                &table->flows[index + 1],
+        memmove(&table->flows[index], &table->flows[index + 1],
                 (table->count - index - 1) * sizeof(table->flows[0]));
     }
     table->count--;
@@ -96,12 +94,8 @@ static void remove_flow_at(FlowTable *table, size_t index) {
  * Allocate all flow slots up front so runtime packet processing never grows
  * memory beyond the configured max_flows cap.
  */
-bool flow_table_init(
-    FlowTable *table,
-    size_t max_flows,
-    size_t stream_buffer_bytes,
-    uint32_t timeout_seconds
-) {
+bool flow_table_init(FlowTable *table, size_t max_flows, size_t stream_buffer_bytes,
+                     uint32_t timeout_seconds) {
     if (table == NULL || max_flows == 0 || stream_buffer_bytes == 0 ||
         max_flows > MINISNIFFER_MAX_FLOWS ||
         stream_buffer_bytes > MINISNIFFER_MAX_STREAM_BUFFER_BYTES ||
@@ -201,8 +195,8 @@ void flow_table_evict_idle(FlowTable *table, uint64_t now_seconds) {
 
     while (i < table->count) {
         uint64_t idle_seconds = now_seconds >= table->flows[i].last_seen_time
-            ? now_seconds - table->flows[i].last_seen_time
-            : 0;
+                                    ? now_seconds - table->flows[i].last_seen_time
+                                    : 0;
 
         if (idle_seconds >= table->timeout_seconds) {
             remove_flow_at(table, i);
@@ -237,19 +231,14 @@ static void evict_oldest_flow(FlowTable *table) {
  * Lookup is the single creation boundary for the capture path. It performs
  * idle eviction first, then capacity eviction only if a new flow is needed.
  */
-FlowInfo *flow_table_get_or_create(
-    FlowTable *table,
-    const PacketInfo *packet,
-    uint64_t now_seconds,
-    FlowDirection *direction
-) {
+FlowInfo *flow_table_get_or_create(FlowTable *table, const PacketInfo *packet, uint64_t now_seconds,
+                                   FlowDirection *direction) {
     FlowKey key;
     FlowDirection packet_direction;
     size_t i;
     FlowInfo *flow;
 
-    if (table == NULL || table->flows == NULL || packet == NULL ||
-        packet->protocol != PROTO_TCP ||
+    if (table == NULL || table->flows == NULL || packet == NULL || packet->protocol != PROTO_TCP ||
         !flow_key_from_packet(packet, &key, &packet_direction)) {
         return NULL;
     }
@@ -307,12 +296,8 @@ bool flow_prepare_reassembly_direction(FlowInfo *flow, FlowDirection direction) 
  * Counter updates stay separate from lookup so future reassembly can decide
  * exactly when a packet should advance per-direction stream state.
  */
-void flow_update_packet(
-    FlowInfo *flow,
-    const PacketInfo *packet,
-    uint64_t now_seconds,
-    FlowDirection direction
-) {
+void flow_update_packet(FlowInfo *flow, const PacketInfo *packet, uint64_t now_seconds,
+                        FlowDirection direction) {
     if (flow == NULL || packet == NULL || direction > FLOW_DIR_B_TO_A) {
         return;
     }

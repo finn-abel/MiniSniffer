@@ -22,8 +22,7 @@ static int port_filter_matches(const AppConfig *config, const PacketInfo *info) 
         return 0;
     }
 
-    return info->src_port == config->filter_port ||
-           info->dst_port == config->filter_port;
+    return info->src_port == config->filter_port || info->dst_port == config->filter_port;
 }
 
 static int host_filter_matches(const AppConfig *config, const PacketInfo *info) {
@@ -39,12 +38,8 @@ static int host_filter_matches(const AppConfig *config, const PacketInfo *info) 
  * Payload filters inspect the bounded decode window. This keeps them aligned
  * with app decoder input instead of the smaller display preview.
  */
-static int payload_contains(
-    const unsigned char *payload,
-    size_t payload_length,
-    const unsigned char *needle,
-    size_t needle_length
-) {
+static int payload_contains(const unsigned char *payload, size_t payload_length,
+                            const unsigned char *needle, size_t needle_length) {
     size_t i;
 
     if (payload == NULL || needle == NULL || needle_length == 0) {
@@ -71,9 +66,7 @@ static int payload_text_filter_matches(const AppConfig *config, const PacketInfo
         return 0;
     }
 
-    return payload_contains(info->payload,
-                            info->payload_decode_length,
-                            config->filter_payload_text,
+    return payload_contains(info->payload, info->payload_decode_length, config->filter_payload_text,
                             config->filter_payload_text_length);
 }
 
@@ -85,9 +78,7 @@ static int payload_hex_filter_matches(const AppConfig *config, const PacketInfo 
         return 0;
     }
 
-    return payload_contains(info->payload,
-                            info->payload_decode_length,
-                            config->filter_payload_hex,
+    return payload_contains(info->payload, info->payload_decode_length, config->filter_payload_hex,
                             config->filter_payload_hex_length);
 }
 
@@ -182,8 +173,7 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
         return 0;
     }
     if (config->filter_dns_type_enabled &&
-        (app->protocol != APP_PROTO_DNS ||
-         app->dns_query_type != config->filter_dns_type)) {
+        (app->protocol != APP_PROTO_DNS || app->dns_query_type != config->filter_dns_type)) {
         return 0;
     }
     if (config->filter_tls_sni_enabled &&
@@ -192,8 +182,7 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
         return 0;
     }
     if (config->filter_tls_alpn_enabled &&
-        (app->protocol != APP_PROTO_TLS ||
-         !app_has_alpn(app->tls_alpn, config->filter_tls_alpn))) {
+        (app->protocol != APP_PROTO_TLS || !app_has_alpn(app->tls_alpn, config->filter_tls_alpn))) {
         return 0;
     }
 
@@ -204,12 +193,9 @@ static int app_filter_matches_one(const AppConfig *config, const AppInfo *app) {
  * App filters are optional and are treated as an AND group when present.
  */
 static int app_filters_enabled(const AppConfig *config) {
-    return config->filter_app_enabled ||
-           config->filter_http_host_enabled ||
-           config->filter_http_method_enabled ||
-           config->filter_dns_query_enabled ||
-           config->filter_dns_type_enabled ||
-           config->filter_tls_sni_enabled ||
+    return config->filter_app_enabled || config->filter_http_host_enabled ||
+           config->filter_http_method_enabled || config->filter_dns_query_enabled ||
+           config->filter_dns_type_enabled || config->filter_tls_sni_enabled ||
            config->filter_tls_alpn_enabled;
 }
 
@@ -223,8 +209,7 @@ static int app_filters_match(const AppConfig *config, const FilterContext *conte
         return 1;
     }
     if (config->reassemble) {
-        return context->flow_is_classified &&
-               app_filter_matches_one(config, context->flow_app);
+        return context->flow_is_classified && app_filter_matches_one(config, context->flow_app);
     }
     if (app_filter_matches_one(config, context->packet_app)) {
         return 1;
@@ -245,10 +230,7 @@ bool filters_match(const AppConfig *config, const FilterContext *context) {
     }
 
     info = context->packet;
-    return protocol_filter_matches(config, info) &&
-           port_filter_matches(config, info) &&
-           host_filter_matches(config, info) &&
-           payload_text_filter_matches(config, info) &&
-           payload_hex_filter_matches(config, info) &&
-           app_filters_match(config, context);
+    return protocol_filter_matches(config, info) && port_filter_matches(config, info) &&
+           host_filter_matches(config, info) && payload_text_filter_matches(config, info) &&
+           payload_hex_filter_matches(config, info) && app_filters_match(config, context);
 }

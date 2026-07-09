@@ -8,16 +8,16 @@
  */
 static const char *dns_type_name(uint16_t type) {
     switch (type) {
-        case 1:
-            return "A";
-        case 2:
-            return "NS";
-        case 5:
-            return "CNAME";
-        case 28:
-            return "AAAA";
-        default:
-            return NULL;
+    case 1:
+        return "A";
+    case 2:
+        return "NS";
+    case 5:
+        return "CNAME";
+    case 28:
+        return "AAAA";
+    default:
+        return NULL;
     }
 }
 
@@ -33,15 +33,15 @@ static void print_dns_type(uint16_t type) {
 
 static const char *app_protocol_name(AppProtocol protocol) {
     switch (protocol) {
-        case APP_PROTO_HTTP:
-            return "http";
-        case APP_PROTO_DNS:
-            return "dns";
-        case APP_PROTO_TLS:
-            return "tls";
-        case APP_PROTO_UNKNOWN:
-        default:
-            return "unknown";
+    case APP_PROTO_HTTP:
+        return "http";
+    case APP_PROTO_DNS:
+        return "dns";
+    case APP_PROTO_TLS:
+        return "tls";
+    case APP_PROTO_UNKNOWN:
+    default:
+        return "unknown";
     }
 }
 
@@ -57,10 +57,8 @@ static const char *transport_name(uint8_t transport_protocol) {
 }
 
 static void print_ip_address(IPAddress address) {
-    printf("%u.%u.%u.%u",
-           (unsigned int)((address.ipv4 >> 24) & 0xff),
-           (unsigned int)((address.ipv4 >> 16) & 0xff),
-           (unsigned int)((address.ipv4 >> 8) & 0xff),
+    printf("%u.%u.%u.%u", (unsigned int)((address.ipv4 >> 24) & 0xff),
+           (unsigned int)((address.ipv4 >> 16) & 0xff), (unsigned int)((address.ipv4 >> 8) & 0xff),
            (unsigned int)(address.ipv4 & 0xff));
 }
 
@@ -175,8 +173,7 @@ void output_print_flow_app_event(const FlowInfo *flow) {
         return;
     }
 
-    printf("flow %s ",
-           transport_name(flow->key.transport_protocol));
+    printf("flow %s ", transport_name(flow->key.transport_protocol));
     print_ip_address(flow->key.a_ip);
     printf(":%u <-> ", (unsigned int)flow->key.a_port);
     print_ip_address(flow->key.b_ip);

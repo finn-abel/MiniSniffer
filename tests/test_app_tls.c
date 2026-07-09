@@ -12,9 +12,8 @@
 static void test_app_tls_decode_client_hello_sni(void) {
     AppInfo info;
 
-    assert(app_tls_decode_client_hello(TLS_CLIENT_HELLO_SNI,
-                                       sizeof(TLS_CLIENT_HELLO_SNI),
-                                       &info) == APP_DECODE_OK);
+    assert(app_tls_decode_client_hello(TLS_CLIENT_HELLO_SNI, sizeof(TLS_CLIENT_HELLO_SNI), &info) ==
+           APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_TLS);
     assert(info.tls_record_version == 0x0303);
     assert(info.tls_handshake_type == 0x01);
@@ -26,8 +25,7 @@ static void test_app_tls_decode_client_hello_sni(void) {
 static void test_app_tls_decode_client_hello_sni_alpn(void) {
     AppInfo info;
 
-    assert(app_tls_decode_client_hello(TLS_CLIENT_HELLO_SNI_ALPN,
-                                       sizeof(TLS_CLIENT_HELLO_SNI_ALPN),
+    assert(app_tls_decode_client_hello(TLS_CLIENT_HELLO_SNI_ALPN, sizeof(TLS_CLIENT_HELLO_SNI_ALPN),
                                        &info) == APP_DECODE_OK);
     assert(info.protocol == APP_PROTO_TLS);
     assert(strcmp(info.tls_sni, "example.com") == 0);
@@ -37,25 +35,22 @@ static void test_app_tls_decode_client_hello_sni_alpn(void) {
 static void test_app_tls_decode_need_more(void) {
     AppInfo info;
 
-    assert(app_tls_decode_client_hello(TLS_TRUNCATED,
-                                       sizeof(TLS_TRUNCATED),
-                                       &info) == APP_DECODE_NEED_MORE);
+    assert(app_tls_decode_client_hello(TLS_TRUNCATED, sizeof(TLS_TRUNCATED), &info) ==
+           APP_DECODE_NEED_MORE);
 }
 
 static void test_app_tls_decode_no_match_for_non_tls(void) {
     AppInfo info;
 
-    assert(app_tls_decode_client_hello(TLS_NO_MATCH,
-                                       sizeof(TLS_NO_MATCH),
-                                       &info) == APP_DECODE_NO_MATCH);
+    assert(app_tls_decode_client_hello(TLS_NO_MATCH, sizeof(TLS_NO_MATCH), &info) ==
+           APP_DECODE_NO_MATCH);
 }
 
 static void test_app_tls_decode_malformed_client_hello(void) {
     AppInfo info;
 
-    assert(app_tls_decode_client_hello(TLS_MALFORMED,
-                                       sizeof(TLS_MALFORMED),
-                                       &info) == APP_DECODE_MALFORMED);
+    assert(app_tls_decode_client_hello(TLS_MALFORMED, sizeof(TLS_MALFORMED), &info) ==
+           APP_DECODE_MALFORMED);
 }
 
 static void test_app_tls_offset_and_copy_helpers(void) {
@@ -101,14 +96,10 @@ static void test_app_tls_rejects_malformed_extensions(void) {
     assert(parse_extensions(short_extensions, sizeof(short_extensions), 0, &info) != 0);
     assert(parse_extensions(oversized_extensions, sizeof(oversized_extensions), 0, &info) != 0);
     assert(parse_extensions(short_extension_header, sizeof(short_extension_header), 0, &info) != 0);
-    assert(parse_extensions(malformed_sni_extension,
-                            sizeof(malformed_sni_extension),
-                            0,
-                            &info) != 0);
-    assert(parse_extensions(malformed_alpn_extension,
-                            sizeof(malformed_alpn_extension),
-                            0,
-                            &info) != 0);
+    assert(parse_extensions(malformed_sni_extension, sizeof(malformed_sni_extension), 0, &info) !=
+           0);
+    assert(parse_extensions(malformed_alpn_extension, sizeof(malformed_alpn_extension), 0, &info) !=
+           0);
 }
 
 static void test_app_tls_alpn_bounds(void) {
@@ -168,8 +159,7 @@ static void test_app_tls_record_edge_cases(void) {
            APP_DECODE_NO_MATCH);
     assert(app_tls_decode_client_hello(long_handshake, sizeof(long_handshake), &info) ==
            APP_DECODE_NEED_MORE);
-    assert(app_tls_decode_client_hello_white_box(TLS_CLIENT_HELLO_SNI,
-                                                 sizeof(TLS_CLIENT_HELLO_SNI),
+    assert(app_tls_decode_client_hello_white_box(TLS_CLIENT_HELLO_SNI, sizeof(TLS_CLIENT_HELLO_SNI),
                                                  &info) == APP_DECODE_OK);
 }
 

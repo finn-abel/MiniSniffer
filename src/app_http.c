@@ -27,9 +27,8 @@ static int starts_with(const uint8_t *data, size_t length, const char *prefix) {
  * instead of being permanently discarded.
  */
 static int maybe_http_request_prefix(const uint8_t *data, size_t length) {
-    static const char *const methods[] = {
-        "GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH", "TRACE", "CONNECT"
-    };
+    static const char *const methods[] = {"GET",     "POST",  "PUT",   "DELETE", "HEAD",
+                                          "OPTIONS", "PATCH", "TRACE", "CONNECT"};
     size_t i;
 
     for (i = 0; i < sizeof(methods) / sizeof(methods[0]); i++) {
@@ -70,10 +69,7 @@ static const uint8_t *find_header_end(const uint8_t *data, size_t length) {
     size_t i;
 
     for (i = 0; i + 3 < length; i++) {
-        if (data[i] == '\r' &&
-            data[i + 1] == '\n' &&
-            data[i + 2] == '\r' &&
-            data[i + 3] == '\n') {
+        if (data[i] == '\r' && data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
             return data + i + 4;
         }
     }
@@ -85,7 +81,8 @@ static const uint8_t *find_header_end(const uint8_t *data, size_t length) {
  * Header values are copied into fixed AppInfo fields with whitespace trimming
  * and truncation, keeping metadata bounded even for oversized headers.
  */
-static void copy_trimmed(char *destination, size_t destination_size, const uint8_t *start, size_t length) {
+static void copy_trimmed(char *destination, size_t destination_size, const uint8_t *start,
+                         size_t length) {
     size_t copy_length;
 
     if (destination == NULL || destination_size == 0) {
@@ -144,18 +141,17 @@ static int parse_request_line(const uint8_t *line, size_t length, AppInfo *out) 
         return 1;
     }
     version_start = path_end + 1;
-    if ((size_t)(line + length - version_start) < 8 ||
-        memcmp(version_start, "HTTP/", 5) != 0) {
+    if ((size_t)(line + length - version_start) < 8 || memcmp(version_start, "HTTP/", 5) != 0) {
         return 1;
     }
 
     copy_trimmed(out->http_method, sizeof(out->http_method), line, (size_t)(method_end - line));
-    copy_trimmed(out->http_path, sizeof(out->http_path), path_start, (size_t)(path_end - path_start));
-    copy_trimmed(out->http_version,
-                 sizeof(out->http_version),
-                 version_start,
+    copy_trimmed(out->http_path, sizeof(out->http_path), path_start,
+                 (size_t)(path_end - path_start));
+    copy_trimmed(out->http_version, sizeof(out->http_version), version_start,
                  (size_t)(line + length - version_start));
-    snprintf(out->summary, sizeof(out->summary), "HTTP request %s %s", out->http_method, out->http_path);
+    snprintf(out->summary, sizeof(out->summary), "HTTP request %s %s", out->http_method,
+             out->http_path);
     return 0;
 }
 
@@ -181,19 +177,19 @@ static int parse_status_line(const uint8_t *line, size_t length, AppInfo *out) {
     }
 
     status = (status_start[0] - '0') * 100 + (status_start[1] - '0') * 10 + (status_start[2] - '0');
-    copy_trimmed(out->http_version, sizeof(out->http_version), line, (size_t)(status_start - 1 - line));
+    copy_trimmed(out->http_version, sizeof(out->http_version), line,
+                 (size_t)(status_start - 1 - line));
     out->http_status_code = (uint16_t)status;
 
     reason_start = status_start + 3;
     if (reason_start < line + length && *reason_start == ' ') {
         reason_start++;
-        copy_trimmed(out->http_reason,
-                     sizeof(out->http_reason),
-                     reason_start,
+        copy_trimmed(out->http_reason, sizeof(out->http_reason), reason_start,
                      (size_t)(line + length - reason_start));
     }
 
-    snprintf(out->summary, sizeof(out->summary), "HTTP response %u", (unsigned int)out->http_status_code);
+    snprintf(out->summary, sizeof(out->summary), "HTTP response %u",
+             (unsigned int)out->http_status_code);
     return 0;
 }
 
@@ -221,9 +217,11 @@ static void parse_headers(const uint8_t *start, const uint8_t *end, AppInfo *out
             if (header_name_equals(line, name_length, "Host")) {
                 copy_trimmed(out->http_host, sizeof(out->http_host), value, value_length);
             } else if (header_name_equals(line, name_length, "User-Agent")) {
-                copy_trimmed(out->http_user_agent, sizeof(out->http_user_agent), value, value_length);
+                copy_trimmed(out->http_user_agent, sizeof(out->http_user_agent), value,
+                             value_length);
             } else if (header_name_equals(line, name_length, "Content-Type")) {
-                copy_trimmed(out->http_content_type, sizeof(out->http_content_type), value, value_length);
+                copy_trimmed(out->http_content_type, sizeof(out->http_content_type), value,
+                             value_length);
             }
         }
 
@@ -235,11 +233,7 @@ static void parse_headers(const uint8_t *start, const uint8_t *end, AppInfo *out
  * Decode only complete HTTP/1.x headers. Missing CRLFCRLF means the caller may
  * provide more bytes later through packet or stream-aware decoding.
  */
-AppDecodeResult app_http_decode(
-    const uint8_t *data,
-    size_t length,
-    AppInfo *out
-) {
+AppDecodeResult app_http_decode(const uint8_t *data, size_t length, AppInfo *out) {
     const uint8_t *header_end;
     const uint8_t *line_end;
 

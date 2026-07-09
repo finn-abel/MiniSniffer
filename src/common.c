@@ -7,15 +7,15 @@
 const char *protocol_to_string(Protocol protocol) {
     /* Keep display strings centralized so capture summaries stay consistent. */
     switch (protocol) {
-        case PROTO_TCP:
-            return "TCP";
-        case PROTO_UDP:
-            return "UDP";
-        case PROTO_ICMP:
-            return "ICMP";
-        case PROTO_OTHER:
-        default:
-            return "OTHER";
+    case PROTO_TCP:
+        return "TCP";
+    case PROTO_UDP:
+        return "UDP";
+    case PROTO_ICMP:
+        return "ICMP";
+    case PROTO_OTHER:
+    default:
+        return "OTHER";
     }
 }
 
@@ -53,29 +53,18 @@ void packet_info_print(const PacketInfo *info) {
     /* Include addresses when IPv4 parsing has filled both endpoint strings. */
     if (info->src_ip[0] != '\0' && info->dst_ip[0] != '\0') {
         if (info->has_ports != 0) {
-            printf("[%03u] %-4s %s:%u -> %s:%u size=%zu\n",
-                   info->packet_number,
-                   protocol_to_string(info->protocol),
-                   info->src_ip,
-                   (unsigned int)info->src_port,
-                   info->dst_ip,
-                   (unsigned int)info->dst_port,
-                   info->size);
+            printf("[%03u] %-4s %s:%u -> %s:%u size=%zu\n", info->packet_number,
+                   protocol_to_string(info->protocol), info->src_ip, (unsigned int)info->src_port,
+                   info->dst_ip, (unsigned int)info->dst_port, info->size);
             return;
         }
 
-        printf("[%03u] %-4s %s -> %s size=%zu\n",
-               info->packet_number,
-               protocol_to_string(info->protocol),
-               info->src_ip,
-               info->dst_ip,
-               info->size);
+        printf("[%03u] %-4s %s -> %s size=%zu\n", info->packet_number,
+               protocol_to_string(info->protocol), info->src_ip, info->dst_ip, info->size);
         return;
     }
 
-    printf("[%03u] %-4s size=%zu\n",
-           info->packet_number,
-           protocol_to_string(info->protocol),
+    printf("[%03u] %-4s size=%zu\n", info->packet_number, protocol_to_string(info->protocol),
            info->size);
 }
 
