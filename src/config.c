@@ -19,6 +19,9 @@ void config_init_defaults(AppConfig *config) {
     config->max_flows = MINISNIFFER_DEFAULT_MAX_FLOWS;
     config->stream_buffer_bytes = MINISNIFFER_DEFAULT_STREAM_BUFFER_BYTES;
     config->flow_timeout_seconds = MINISNIFFER_DEFAULT_FLOW_TIMEOUT_SECONDS;
+    config->ipv4_fragment_max_datagrams = MINISNIFFER_DEFAULT_IPV4_FRAGMENT_MAX_DATAGRAMS;
+    config->ipv4_fragment_max_bytes = MINISNIFFER_DEFAULT_IPV4_FRAGMENT_MAX_BYTES;
+    config->ipv4_fragment_timeout_seconds = MINISNIFFER_DEFAULT_IPV4_FRAGMENT_TIMEOUT_SECONDS;
     config->max_packets = 0;
     config->stats_mode = 0;
     config->version_requested = false;

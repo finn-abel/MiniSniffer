@@ -3,7 +3,7 @@
 MiniSniffer is organized as a small, bounded packet-processing pipeline:
 
 ```text
-capture -> parser -> flow/reassembly -> app decoder -> filters -> output/logger -> stats
+capture -> parser -> fragment/flow reassembly -> app decoder -> filters -> output/logger -> stats
 ```
 
 Each stage keeps a narrow responsibility so packet data remains easier to
@@ -24,15 +24,21 @@ permissions, but MiniSniffer does not attempt to bypass those permissions.
 
 ### Parser
 
-`src/parser.c` converts raw Ethernet frames into bounded packet metadata. It
-currently handles Ethernet IPv4 packets and extracts protocol, address, port,
-size, timestamp, and payload-view information when enough bytes are present.
+`src/parser.c` converts supported libpcap link-layer packets into bounded
+packet metadata. It handles IPv4 and IPv6 packets and extracts protocol,
+address, port, ICMP, size, timestamp, and payload-view information when enough
+bytes are present.
 
-The parser treats packet bytes as untrusted input. IPv4 total length and UDP
-length fields bound transport payload views, and Ethernet padding is not
-treated as payload.
+The parser treats packet bytes as untrusted input. IPv4 total length, IPv6
+payload length, and UDP length fields bound transport payload views, and
+link-layer padding is not treated as payload.
 
 ### Flow and Reassembly
+
+`src/ipv4_frag.c` tracks bounded IPv4 fragment state keyed by source,
+destination, protocol, and identification. Complete datagrams are reconstructed
+only under count, byte, and timeout caps; overlapping fragments invalidate the
+datagram.
 
 `src/flow.c`, `src/tcp_reassembly.c`, and `src/stream_buffer.c` track bounded
 TCP flow state when `--decode-app --reassemble` is enabled. Flow tracking is
@@ -93,7 +99,9 @@ formula characters.
 ### Stats
 
 `src/stats.c` tracks displayed packet totals when `--stats` is enabled. Stats
-count packets after filtering, not all raw captured packets.
+count packets after filtering, not all raw captured packets. IPv4 fragment
+counters track fragments seen, reassembled, expired, malformed, and dropped due
+to caps.
 
 ## Safety and Scope
 
@@ -109,9 +117,9 @@ network tool.
 
 ## Current Limits
 
-- Ethernet IPv4 parsing only
-- No IPv6 parser
-- No IP reassembly
+- Supported datalink parsing only: Ethernet, raw IPv4/IPv6, Linux cooked v1/v2,
+  and BSD null/loopback
+- IPv4 fragment reassembly is bounded and rejects overlaps
 - TCP and UDP ports only when enough header bytes were captured
 - Bounded payload inspection and payload display
 - Cleartext HTTP/1.x metadata only

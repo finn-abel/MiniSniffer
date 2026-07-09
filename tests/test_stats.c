@@ -23,6 +23,11 @@ static void test_stats_init_clears_counters(void) {
     stats.icmp_packets = 99;
     stats.other_packets = 99;
     stats.total_bytes = 99;
+    stats.ipv4_fragments_seen = 99;
+    stats.ipv4_fragments_reassembled = 99;
+    stats.ipv4_fragments_expired = 99;
+    stats.ipv4_fragments_malformed = 99;
+    stats.ipv4_fragments_dropped = 99;
 
     stats_init(&stats);
 
@@ -32,6 +37,11 @@ static void test_stats_init_clears_counters(void) {
     assert(stats.icmp_packets == 0);
     assert(stats.other_packets == 0);
     assert(stats.total_bytes == 0);
+    assert(stats.ipv4_fragments_seen == 0);
+    assert(stats.ipv4_fragments_reassembled == 0);
+    assert(stats.ipv4_fragments_expired == 0);
+    assert(stats.ipv4_fragments_malformed == 0);
+    assert(stats.ipv4_fragments_dropped == 0);
 }
 
 static void test_stats_update_tracks_protocol_counts_and_bytes(void) {

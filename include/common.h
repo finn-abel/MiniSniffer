@@ -7,6 +7,7 @@
 #define MINISNIFFER_IP_TEXT_LEN 46
 #define MINISNIFFER_MAX_PAYLOAD_PREVIEW_BYTES 256
 #define MINISNIFFER_APP_TEXT_LEN 256
+#define MINISNIFFER_MAX_IPV4_HEADER_BYTES 60
 
 /*
  * Protocol describes the coarse protocol category for a packet.
@@ -89,6 +90,16 @@ typedef struct {
     uint8_t icmp_type;
     uint8_t icmp_code;
 
+    int is_ipv4_fragment;
+    uint16_t ipv4_identification;
+    uint8_t ipv4_protocol_number;
+    size_t ipv4_header_length;
+    size_t ipv4_fragment_offset;
+    int ipv4_more_fragments;
+    size_t ipv4_fragment_payload_length;
+    const uint8_t *ipv4_fragment_payload;
+    unsigned char ipv4_header[MINISNIFFER_MAX_IPV4_HEADER_BYTES];
+
     int has_payload;
     const uint8_t *payload;
     size_t payload_capture_length;
@@ -112,6 +123,12 @@ typedef struct {
     uint32_t other_packets;
 
     size_t total_bytes;
+
+    uint32_t ipv4_fragments_seen;
+    uint32_t ipv4_fragments_reassembled;
+    uint32_t ipv4_fragments_expired;
+    uint32_t ipv4_fragments_malformed;
+    uint32_t ipv4_fragments_dropped;
 } PacketStats;
 
 /*

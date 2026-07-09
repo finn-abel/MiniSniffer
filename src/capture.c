@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -12,6 +13,7 @@
 #include "csv_logger.h"
 #include "filters.h"
 #include "flow.h"
+#include "ipv4_frag.h"
 #include "output.h"
 #include "parser.h"
 #include "stream_buffer.h"
@@ -388,7 +390,9 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
     pcap_dumper_t *pcap_writer = NULL;
     int datalink_type;
     FlowTable flow_table = {0};
+    IPv4FragmentTable fragment_table = {0};
     bool flow_table_ready = false;
+    bool fragment_table_ready = false;
     uint32_t captured_packets = 0;
 
     if (config == NULL) {
@@ -460,11 +464,22 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         return 1;
     }
 
+    if (!ipv4_fragment_table_init(&fragment_table, config->ipv4_fragment_max_datagrams,
+                                  config->ipv4_fragment_max_bytes,
+                                  config->ipv4_fragment_timeout_seconds)) {
+        fprintf(stderr, "Error: failed to initialize IPv4 fragment table.\n");
+        close_pcap_writer(&pcap_writer);
+        pcap_close(handle);
+        return 1;
+    }
+    fragment_table_ready = true;
+
     if (config->reassemble) {
         if (!flow_table_init(&flow_table, config->max_flows, config->stream_buffer_bytes,
                              config->flow_timeout_seconds)) {
             fprintf(stderr, "Error: failed to initialize flow table.\n");
             close_pcap_writer(&pcap_writer);
+            ipv4_fragment_table_cleanup(&fragment_table);
             pcap_close(handle);
             return 1;
         }
@@ -476,6 +491,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         csv_logger_open(config->log_path, config->decode_app, config->payload_display_enabled != 0,
                         config->payload_preview_bytes, config->log_flush_mode) != 0) {
         close_pcap_writer(&pcap_writer);
+        ipv4_fragment_table_cleanup(&fragment_table);
         flow_table_cleanup(&flow_table);
         pcap_close(handle);
         return 1;
@@ -486,6 +502,9 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         struct pcap_pkthdr *header = NULL;
         const unsigned char *packet = NULL;
         PacketInfo info;
+        PacketInfo assembled_info;
+        PacketInfo *effective_info = &info;
+        IPv4FragmentProcessResult fragment_result;
         AppInfo *packet_app_ptr = NULL;
         FlowInfo *flow = NULL;
         AppInfo *flow_app_ptr = NULL;
@@ -494,6 +513,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         AppInfo *filter_flow_app_ptr = NULL;
         bool flow_was_classified_before_packet = false;
         uint64_t packet_time;
+        unsigned char *assembled_packet = NULL;
         int result;
 
         /*
@@ -508,6 +528,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             fprintf(stderr, "Error: packet capture failed: %s\n", pcap_geterr(handle));
             (void)csv_logger_close();
             close_pcap_writer(&pcap_writer);
+            ipv4_fragment_table_cleanup(&fragment_table);
             flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
@@ -520,6 +541,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             fprintf(stderr, "Packet parsing failed.\n");
             (void)csv_logger_close();
             close_pcap_writer(&pcap_writer);
+            ipv4_fragment_table_cleanup(&fragment_table);
             flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
@@ -527,18 +549,43 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         set_packet_timestamp(&info, header);
         packet_time = (uint64_t)header->ts.tv_sec;
 
+        memset(&assembled_info, 0, sizeof(assembled_info));
+        memset(&fragment_result, 0, sizeof(fragment_result));
+        if (fragment_table_ready && info.is_ipv4_fragment != 0) {
+            fragment_result = ipv4_fragment_table_process(&fragment_table, &info, packet_time,
+                                                          stats);
+            if (fragment_result.result == IPV4_FRAGMENT_REASSEMBLED) {
+                assembled_packet = fragment_result.packet;
+                if (parser_parse_packet_with_datalink(assembled_packet,
+                                                      fragment_result.packet_length, DLT_RAW,
+                                                      &assembled_info) != 0) {
+                    free(assembled_packet);
+                    fprintf(stderr, "Packet parsing failed.\n");
+                    (void)csv_logger_close();
+                    close_pcap_writer(&pcap_writer);
+                    ipv4_fragment_table_cleanup(&fragment_table);
+                    flow_table_cleanup(&flow_table);
+                    pcap_close(handle);
+                    return 1;
+                }
+                set_packet_timestamp(&assembled_info, header);
+                effective_info = &assembled_info;
+            }
+        }
+
         if (flow_table_ready) {
             FlowDirection direction = FLOW_DIR_A_TO_B;
 
-            flow = flow_table_get_or_create(&flow_table, &info, packet_time, &direction);
+            flow = flow_table_get_or_create(&flow_table, effective_info, packet_time, &direction);
             if (flow != NULL) {
-                flow_update_packet(flow, &info, packet_time, direction);
+                flow_update_packet(flow, effective_info, packet_time, direction);
                 flow_was_classified_before_packet = flow->app_classified;
                 if (flow->app_classified) {
                     flow_app_ptr = &flow->app;
                     filter_flow_app_ptr = &flow->app;
                     app_source = "flow";
-                } else if (config->decode_app && flow_decode_stream_app(flow, direction, &info)) {
+                } else if (config->decode_app &&
+                           flow_decode_stream_app(flow, direction, effective_info)) {
                     flow_app_ptr = &flow->app;
                     app_source = "flow";
                 }
@@ -546,24 +593,27 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         }
 
         if (config->decode_app) {
-            AppDecodeResult decode_result = app_decode_packet(&info, &info.app);
+            AppDecodeResult decode_result =
+                app_decode_packet(effective_info, &effective_info->app);
 
-            if (decode_result == APP_DECODE_OK && info.app.protocol != APP_PROTO_UNKNOWN) {
-                packet_app_ptr = &info.app;
+            if (decode_result == APP_DECODE_OK &&
+                effective_info->app.protocol != APP_PROTO_UNKNOWN) {
+                packet_app_ptr = &effective_info->app;
                 app_source = "packet";
                 if (flow != NULL && !flow->app_classified) {
-                    flow->app = info.app;
+                    flow->app = effective_info->app;
                     flow->app_classified = true;
                     flow_app_ptr = &flow->app;
                 }
             }
         }
 
-        filter_context.packet = &info;
+        filter_context.packet = effective_info;
         filter_context.packet_app = packet_app_ptr;
         filter_context.flow_app = filter_flow_app_ptr;
         filter_context.flow_is_classified = flow_was_classified_before_packet;
         if (!filters_match(config, &filter_context)) {
+            free(assembled_packet);
             continue;
         }
 
@@ -594,8 +644,10 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         }
         if (csv_logger_write_packet(&info, packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
                                     app_source) != 0) {
+            free(assembled_packet);
             (void)csv_logger_close();
             close_pcap_writer(&pcap_writer);
+            ipv4_fragment_table_cleanup(&fragment_table);
             flow_table_cleanup(&flow_table);
             pcap_close(handle);
             return 1;
@@ -604,12 +656,14 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
             pcap_dump((u_char *)pcap_writer, header, packet);
         }
         stats_update(stats, &info);
+        free(assembled_packet);
     }
 
     if (should_stop && !config->quiet && !config->json_output) {
         printf("\nCapture stopped.\n");
     }
 
+    ipv4_fragment_table_cleanup(&fragment_table);
     flow_table_cleanup(&flow_table);
     close_pcap_writer(&pcap_writer);
     pcap_close(handle);

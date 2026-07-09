@@ -325,6 +325,7 @@ static int parse_ipv4_packet(const unsigned char *packet, size_t packet_len, siz
     size_t captured_ip_length;
     size_t parsed_packet_len;
     size_t ip_header_len;
+    size_t fragment_payload_offset;
     unsigned char ip_version;
     if (packet_len < ip_offset + IPV4_MIN_HEADER_LEN) {
         return 0;
@@ -372,7 +373,19 @@ static int parse_ipv4_packet(const unsigned char *packet, size_t packet_len, siz
      */
     set_ipv4_protocol(ip_header[9], info);
     info->ip_version = 4;
+    info->ipv4_protocol_number = ip_header[9];
     clear_transport_ports(info);
+
+    fragment_payload_offset = ip_offset + ip_header_len;
+    if (parsed_packet_len >= fragment_payload_offset) {
+        info->ipv4_fragment_payload = packet + fragment_payload_offset;
+        info->ipv4_fragment_payload_length = parsed_packet_len - fragment_payload_offset;
+    }
+    info->ipv4_identification = read_u16_network(ip_header + 4);
+    info->ipv4_header_length = ip_header_len;
+    if (ip_header_len <= sizeof(info->ipv4_header)) {
+        memcpy(info->ipv4_header, ip_header, ip_header_len);
+    }
 
     /*
      * Transport headers in fragmented datagrams are not safe to interpret
@@ -380,7 +393,10 @@ static int parse_ipv4_packet(const unsigned char *packet, size_t packet_len, siz
      * transport payload, so leave only coarse IP protocol metadata populated.
      */
     fragment_field = read_u16_network(ip_header + 6);
+    info->ipv4_fragment_offset = (size_t)(fragment_field & IPV4_FRAGMENT_OFFSET_MASK) * 8;
+    info->ipv4_more_fragments = (fragment_field & IPV4_MORE_FRAGMENTS) != 0;
     if ((fragment_field & (IPV4_FRAGMENT_OFFSET_MASK | IPV4_MORE_FRAGMENTS)) != 0) {
+        info->is_ipv4_fragment = 1;
         return 0;
     }
 

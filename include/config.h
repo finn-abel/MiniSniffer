@@ -15,6 +15,11 @@
 #define MINISNIFFER_MAX_FLOWS 1024
 #define MINISNIFFER_MAX_STREAM_BUFFER_BYTES 1048576
 #define MINISNIFFER_MAX_TOTAL_REASSEMBLY_BYTES 134217728
+#define MINISNIFFER_DEFAULT_IPV4_FRAGMENT_MAX_DATAGRAMS 64
+#define MINISNIFFER_DEFAULT_IPV4_FRAGMENT_MAX_BYTES 1048576
+#define MINISNIFFER_DEFAULT_IPV4_FRAGMENT_TIMEOUT_SECONDS 30
+#define MINISNIFFER_MAX_IPV4_FRAGMENT_DATAGRAMS 1024
+#define MINISNIFFER_MAX_IPV4_FRAGMENT_BYTES 16777216
 #define MINISNIFFER_VERSION "0.2.0"
 
 typedef enum { LOG_FLUSH_ALWAYS = 0, LOG_FLUSH_LINE, LOG_FLUSH_EXIT } LogFlushMode;
@@ -36,6 +41,9 @@ typedef struct {
     size_t max_flows;
     size_t stream_buffer_bytes;
     uint32_t flow_timeout_seconds;
+    size_t ipv4_fragment_max_datagrams;
+    size_t ipv4_fragment_max_bytes;
+    uint32_t ipv4_fragment_timeout_seconds;
 
     int max_packets;
     int stats_mode;

@@ -59,4 +59,9 @@ void stats_print(const PacketStats *stats) {
     printf("Other: %u\n", stats->other_packets);
     printf("Total bytes: %zu\n", stats->total_bytes);
     printf("Average packet size: %zu\n", average_size);
+    printf("IPv4 fragments seen: %u\n", stats->ipv4_fragments_seen);
+    printf("IPv4 fragments reassembled: %u\n", stats->ipv4_fragments_reassembled);
+    printf("IPv4 fragments expired: %u\n", stats->ipv4_fragments_expired);
+    printf("IPv4 fragments malformed: %u\n", stats->ipv4_fragments_malformed);
+    printf("IPv4 fragments dropped: %u\n", stats->ipv4_fragments_dropped);
 }

@@ -265,6 +265,59 @@ static size_t build_tcp_packet(unsigned char *packet, size_t packet_capacity, ui
     return packet_length;
 }
 
+static size_t build_ipv4_fragment_packet(unsigned char *packet, size_t packet_capacity,
+                                         uint16_t identification, size_t fragment_offset,
+                                         int more_fragments, const uint8_t *fragment_payload,
+                                         size_t fragment_payload_length) {
+    const size_t ethernet_length = 14;
+    const size_t ipv4_length = 20;
+    const size_t packet_length = ethernet_length + ipv4_length + fragment_payload_length;
+    size_t ip = ethernet_length;
+    uint16_t total_length = (uint16_t)(ipv4_length + fragment_payload_length);
+    uint16_t fragment_field = (uint16_t)(fragment_offset / 8);
+
+    assert(packet_length <= packet_capacity);
+    assert(fragment_offset % 8 == 0);
+    memset(packet, 0, packet_length);
+
+    if (more_fragments) {
+        fragment_field |= 0x2000;
+    }
+    packet[12] = 0x08;
+    packet[13] = 0x00;
+    packet[ip] = 0x45;
+    packet[ip + 2] = (uint8_t)(total_length >> 8);
+    packet[ip + 3] = (uint8_t)total_length;
+    packet[ip + 4] = (uint8_t)(identification >> 8);
+    packet[ip + 5] = (uint8_t)identification;
+    packet[ip + 6] = (uint8_t)(fragment_field >> 8);
+    packet[ip + 7] = (uint8_t)fragment_field;
+    packet[ip + 8] = 64;
+    packet[ip + 9] = 6;
+    packet[ip + 12] = 10;
+    packet[ip + 15] = 1;
+    packet[ip + 16] = 10;
+    packet[ip + 19] = 2;
+    memcpy(packet + ethernet_length + ipv4_length, fragment_payload, fragment_payload_length);
+    return packet_length;
+}
+
+static size_t build_tcp_datagram_payload(unsigned char *payload, size_t payload_capacity,
+                                         const uint8_t *app_payload, size_t app_payload_length) {
+    const size_t tcp_length = 20;
+    size_t payload_length = tcp_length + app_payload_length;
+
+    assert(payload_length <= payload_capacity);
+    memset(payload, 0, payload_length);
+    payload[0] = 0xc3;
+    payload[1] = 0x50;
+    payload[3] = 80;
+    payload[12] = 0x50;
+    payload[13] = 0x18;
+    memcpy(payload + tcp_length, app_payload, app_payload_length);
+    return payload_length;
+}
+
 static void queue_packet(size_t index, const unsigned char *packet, size_t length, long seconds) {
     assert(index < TEST_MAX_PACKETS);
     fake_pcap.next_results[index] = 1;
@@ -670,6 +723,44 @@ static void test_capture_reassembles_split_http_and_logs(void) {
     unlink(log_path);
 }
 
+static void test_capture_reassembles_ipv4_fragments_for_app_decode(void) {
+    static const uint8_t http_request[] = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
+    unsigned char datagram_payload[128];
+    unsigned char first_packet[128];
+    unsigned char second_packet[128];
+    size_t datagram_payload_length;
+    size_t first_length;
+    size_t second_length;
+    char device_name[] = "en-test";
+    pcap_if_t device = make_device(device_name, 0, NULL, NULL);
+    AppConfig config = make_capture_config(device_name);
+    PacketStats stats;
+
+    datagram_payload_length =
+        build_tcp_datagram_payload(datagram_payload, sizeof(datagram_payload), http_request,
+                                   sizeof(http_request) - 1);
+    first_length = build_ipv4_fragment_packet(first_packet, sizeof(first_packet), 77, 0, 1,
+                                              datagram_payload, 24);
+    second_length = build_ipv4_fragment_packet(second_packet, sizeof(second_packet), 77, 24, 0,
+                                               datagram_payload + 24, datagram_payload_length - 24);
+
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, first_packet, first_length, 40);
+    queue_packet(1, second_packet, second_length, 41);
+    config.max_packets = 2;
+    config.decode_app = true;
+
+    stats_init(&stats);
+    assert(capture_start_mocked(&config, &stats) == 0);
+    assert(stats.total_packets == 2);
+    assert(stats.tcp_packets == 2);
+    assert(stats.ipv4_fragments_seen == 2);
+    assert(stats.ipv4_fragments_reassembled == 1);
+    assert(stats.ipv4_fragments_malformed == 0);
+    assert(stats.ipv4_fragments_dropped == 0);
+}
+
 static void test_capture_static_helpers_and_signal_path(void) {
     struct pcap_pkthdr header;
     PacketInfo packet;
@@ -722,6 +813,7 @@ int main(void) {
     test_capture_writes_only_displayed_packets_to_pcap();
     test_capture_write_refuses_existing_pcap_file();
     test_capture_reassembles_split_http_and_logs();
+    test_capture_reassembles_ipv4_fragments_for_app_decode();
     test_capture_static_helpers_and_signal_path();
 
     printf("All capture tests passed.\n");

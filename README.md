@@ -19,6 +19,7 @@ writes CSV logs, and can report capture statistics when the run completes.
 - Explicit interface selection with `--interface`
 - IPv4 and IPv6 packet parsing for TCP, UDP, ICMP/ICMPv6, and other protocols
 - Conservative IPv6 extension-header handling before TCP/UDP/ICMPv6 parsing
+- Bounded IPv4 fragment reassembly for transport and app decoding
 - Protocol, port, and IPv4/IPv6 host filters
 - Bounded packet payload inspection
 - Literal text and hex payload filters
@@ -359,6 +360,14 @@ frames can be decoded after they span multiple in-order or simply reordered TCP
 segments. Data that exceeds configured memory caps is dropped instead of growing
 without bound.
 
+IPv4 fragments are tracked independently from TCP stream reassembly. Fragments
+are keyed by source, destination, protocol, and IPv4 identification, then held
+under strict datagram-count, byte, and timeout caps. Individual fragments keep
+their coarse packet summaries; transport ports, payload filters, and app
+metadata are decoded only after a complete datagram is safely assembled.
+Overlapping fragments invalidate the datagram instead of choosing one byte
+sequence over another.
+
 Flow tracking is bounded by `--max-flows`. Only TCP flows are tracked, and each
 direction's storage is allocated lazily when payload arrives. The CLI enforces
 per-setting and aggregate memory ceilings. When the table is full after idle
@@ -430,6 +439,11 @@ The stats summary includes:
 - Other packet count
 - Total displayed bytes
 - Average displayed packet size
+- IPv4 fragments seen
+- IPv4 fragments reassembled
+- IPv4 fragments expired
+- IPv4 fragments malformed
+- IPv4 fragments dropped due to caps
 
 Stats count displayed packets only. Filtered-out packets are ignored.
 
@@ -443,8 +457,8 @@ make test
 
 The test target builds and runs tests for config parsing, CLI parsing, packet
 parsing, filtering, flow tracking, TCP reassembly, stream buffering,
-application decoders, CSV logging, stats, and basic capture validation. It also
-runs `make clean` after the tests complete.
+IPv4 fragment reassembly, application decoders, CSV logging, stats, and basic
+capture validation. It also runs `make clean` after the tests complete.
 
 Run the same suite with AddressSanitizer and UndefinedBehaviorSanitizer:
 
@@ -602,6 +616,7 @@ Important modules:
 - `src/parser.c` selects supported link-layer offsets and parses IPv4/IPv6 packet metadata.
 - `src/filters.c` applies protocol, port, host, payload, and app filters.
 - `src/app_decoder.c` dispatches packet-local and stream app decoders.
+- `src/ipv4_frag.c` handles bounded IPv4 fragment reassembly.
 - `src/tcp_reassembly.c` and `src/stream_buffer.c` handle bounded stream assembly.
 - `src/flow.c` tracks bounded flow state and app classification.
 - `src/csv_logger.c` writes displayed packets to CSV.
@@ -611,16 +626,16 @@ Important modules:
 
 - MiniSniffer parses Ethernet, raw IPv4/IPv6, Linux cooked capture v1/v2, and
   BSD null/loopback captures when libpcap reports those datalink types.
-- Fragmented IPv4 datagrams retain coarse protocol/address metadata but are not
-  decoded at the transport or application layers because IP reassembly is not
-  implemented.
+- Fragmented IPv4 datagrams retain coarse protocol/address metadata until a
+  complete datagram is assembled within the configured internal caps.
 - TCP and UDP ports are parsed only when enough header bytes were captured.
 - IPv4 total length, IPv6 payload length, and UDP length fields bound transport
   payload views; link-layer padding is never treated as payload.
 - Payload display and legacy payload CSV output are bounded to 256 bytes.
 - Payload filters and packet-local app decoders inspect a bounded decode window.
-- IPv6 extension-header walking is not implemented; transport metadata is parsed
-  only when the IPv6 next-header field directly names TCP, UDP, or ICMPv6.
+- IPv6 extension-header walking is conservative; fragments, ESP, truncated
+  extension headers, and no-next-header packets are not decoded at transport
+  or app layers.
 - App decoding is intentionally limited to cleartext HTTP/1.x metadata, DNS
   query metadata, and TLS ClientHello metadata.
 - TCP reassembly is conservative and bounded; it is not a full TCP stack.

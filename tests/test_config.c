@@ -37,6 +37,10 @@ static void test_config_defaults_app_decode_options(void) {
     assert(config.max_flows == MINISNIFFER_DEFAULT_MAX_FLOWS);
     assert(config.stream_buffer_bytes == MINISNIFFER_DEFAULT_STREAM_BUFFER_BYTES);
     assert(config.flow_timeout_seconds == MINISNIFFER_DEFAULT_FLOW_TIMEOUT_SECONDS);
+    assert(config.ipv4_fragment_max_datagrams == MINISNIFFER_DEFAULT_IPV4_FRAGMENT_MAX_DATAGRAMS);
+    assert(config.ipv4_fragment_max_bytes == MINISNIFFER_DEFAULT_IPV4_FRAGMENT_MAX_BYTES);
+    assert(config.ipv4_fragment_timeout_seconds ==
+           MINISNIFFER_DEFAULT_IPV4_FRAGMENT_TIMEOUT_SECONDS);
 }
 
 static void test_config_defaults_protocol_filter(void) {

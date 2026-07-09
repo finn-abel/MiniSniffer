@@ -179,6 +179,13 @@ static void test_parser_does_not_decode_fragmented_transport_headers(void) {
 
     assert(parser_parse_packet(packet, sizeof(packet), &info) == 0);
     assert(info.protocol == PROTO_TCP);
+    assert(info.is_ipv4_fragment == 1);
+    assert(info.ipv4_identification == 1);
+    assert(info.ipv4_protocol_number == 6);
+    assert(info.ipv4_fragment_offset == 0);
+    assert(info.ipv4_more_fragments == 1);
+    assert(info.ipv4_fragment_payload_length == 20);
+    assert(info.ipv4_fragment_payload == packet + 14 + 20);
     assert(info.has_ports == 0);
     assert(info.has_payload == 0);
 }
