@@ -5,6 +5,13 @@ libpcap. It captures live packets, parses Ethernet/IPv4 traffic, applies
 simple filters, prints readable packet summaries, optionally writes CSV logs,
 and can report capture statistics when the run completes.
 
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [License](LICENSE)
+
 ## Features
 
 - Live packet capture with libpcap
@@ -21,6 +28,17 @@ and can report capture statistics when the run completes.
 - Summary statistics for displayed packets
 - Clean Ctrl+C shutdown for unlimited captures
 - Unit tests for the core modules
+
+## Safety and Scope
+
+MiniSniffer is for learning, local diagnostics, and authorized network
+observation. It is not for MITM, credential capture, decryption, injection,
+stealth, evasion, persistence, or use on networks you do not own or have
+explicit permission to inspect.
+
+The project focuses on bounded parsing, metadata extraction, filtering, CSV
+logging, and statistics. It does not decrypt encrypted traffic and does not
+modify or inject packets.
 
 ## Requirements
 
@@ -472,6 +490,7 @@ Examples:
 include/          Public headers
 src/              MiniSniffer implementation
 tests/            Unit tests
+docs/             Architecture and project documentation
 Makefile          Build, test, check, install, and clean targets
 README.md         Project documentation
 ```
