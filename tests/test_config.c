@@ -23,6 +23,7 @@ static void test_config_defaults_capture_options(void) {
     assert(strcmp(config.read_path, "") == 0);
     assert(config.write_path_enabled == false);
     assert(strcmp(config.write_path, "") == 0);
+    assert(config.no_bpf == false);
 }
 
 static void test_config_defaults_app_decode_options(void) {

@@ -23,6 +23,8 @@ writes CSV logs, and can report capture statistics when the run completes.
 - Conservative IPv6 extension-header handling before TCP/UDP/ICMPv6 parsing
 - Bounded IPv4 fragment reassembly for transport and app decoding
 - Protocol, port, and IPv4/IPv6 host filters
+- Kernel-level BPF pre-filtering compiled from simple protocol/port/host
+  filters, in both live and offline capture, with `--no-bpf` to disable it
 - Bounded packet payload inspection
 - Literal text and hex payload filters
 - Packet-local HTTP, DNS, TLS ClientHello, DHCP, mDNS, and conservative QUIC
@@ -33,6 +35,8 @@ writes CSV logs, and can report capture statistics when the run completes.
 - Summary statistics for displayed packets
 - Clean Ctrl+C shutdown for unlimited captures
 - Unit tests for the core modules
+- Lightweight benchmark targets for the parser, app decoders, filters, and
+  TCP reassembly
 
 ## Safety and Scope
 
@@ -132,7 +136,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
        [--host <ip>] [--payload] [--payload-bytes <number>]
        [--payload-decode-bytes <number>] [--domain-match <mode>]
        [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]
-       [--read <file.pcap>] [--write <file.pcap>]
+       [--read <file.pcap>] [--write <file.pcap>] [--no-bpf]
        [--json] [--flush-log <always|line|exit>]
        [--decode-app] [--reassemble] [--max-flows <number>]
        [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]
@@ -164,6 +168,7 @@ Usage: ./MiniSniffer [--help] [--version] [--list-interfaces] [--interface <name
 | `--payload-hex <hex>` | Display only packets whose bounded payload decode window contains the byte pattern. |
 | `--read <file.pcap>` | Read packets from an offline pcap file instead of live capture. Does not require interface selection or capture permissions. |
 | `--write <file.pcap>` | Write displayed packets to a new pcap file, preserving timestamps and link type. Existing files are refused. |
+| `--no-bpf` | Disable kernel-level BPF pre-filtering and rely entirely on software filtering. Useful for debugging filter behavior. |
 | `--json` | Print displayed packets as JSON Lines instead of human-readable packet text. |
 | `--decode-app` | Decode packet-local HTTP, DNS, and TLS ClientHello metadata. |
 | `--reassemble` | Enable bounded TCP stream reassembly for app decoding. Requires `--decode-app`. |
@@ -232,6 +237,45 @@ sudo ./MiniSniffer --protocol udp --port 53 --host 2001:4860:4860::8888 --decode
 
 Port filters apply only to packets with TCP or UDP ports. ICMP and other
 packets do not match a port filter.
+
+### BPF Pre-Filtering
+
+When `--protocol`, `--port`, or `--host` are enabled, MiniSniffer compiles a
+matching libpcap BPF expression and installs it with `pcap_setfilter`, in both
+live and offline (`--read`) capture. This is a pure optimization: it reduces
+how many packets libpcap delivers to MiniSniffer at all, but every displayed
+packet is still fully re-checked by the exact same software filters described
+above. Only filters that translate exactly to kernel-level primitives are
+ever compiled into BPF:
+
+- `--protocol tcp` -> `tcp`
+- `--protocol udp` -> `udp`
+- `--protocol icmp` -> `(icmp or icmp6)`
+- `--protocol arp` -> `arp`
+- `--protocol other` has no safe BPF equivalent and contributes no clause;
+  `--port`/`--host` still narrow the BPF filter even when protocol cannot
+- `--port <number>` -> `port <number>`
+- `--host <ip>` -> `host <ip>`
+
+Payload and application-layer filters (`--payload-contains`, `--payload-hex`,
+`--app`, and all app-specific filters) can never be expressed safely in BPF,
+since they require inspecting content BPF cannot see. They always run
+entirely in software, regardless of BPF pre-filtering.
+
+If BPF compilation or installation fails for any reason (unsupported
+expression on a given link type, driver quirk, and so on), MiniSniffer prints
+a warning and falls back to inspecting every packet in software; this never
+aborts capture; correctness never depends on BPF succeeding. Use `--no-bpf` to
+disable BPF pre-filtering entirely, which is useful when debugging whether an
+issue is related to the kernel-level filter.
+
+```sh
+sudo ./MiniSniffer --protocol tcp --port 443 --host 142.250.190.14 --verbose --count 10
+sudo ./MiniSniffer --protocol tcp --port 443 --no-bpf --count 10
+```
+
+With `--verbose`, a successfully installed filter prints
+`BPF filter installed: <expression>` before capture begins.
 
 Payload filters inspect the bounded payload decode window, not the smaller
 console/log preview. They do not require `--payload`; use `--payload` only when
@@ -532,6 +576,9 @@ sudo ./MiniSniffer --count 50 --stats
 The stats summary includes:
 
 - Displayed packet count
+- Raw packets seen (every packet libpcap delivered, before filtering)
+- Packets filtered out (parsed successfully but did not pass active filters)
+- Parse failures (packets the parser could not summarize at all; skipped, not fatal)
 - TCP packet count
 - UDP packet count
 - ICMP packet count
@@ -544,6 +591,8 @@ The stats summary includes:
 - IPv4 fragments expired
 - IPv4 fragments malformed
 - IPv4 fragments dropped due to caps
+- IPv4 fragment reassembly memory currently in use and the configured maximum
+- Pcap driver packets received, dropped, and interface drops, when available
 - App decode no_match, need_more, malformed, truncated, and decoded counters
 - Flows created
 - Flows active when capture ended
@@ -552,9 +601,20 @@ The stats summary includes:
 - Flow retransmissions, out-of-order segments, overlapping segments, and gaps
 - Flow stream bytes currently in use and the configured maximum
 
-Stats count displayed packets only. Filtered-out packets are ignored. Flow
-counters reflect the whole `--reassemble` run and are populated once, at the
-end of capture; they are all zero when `--reassemble` is not used.
+Stats count displayed packets only for the per-protocol and byte counters;
+filtered-out packets are tracked separately via the "packets filtered out"
+counter above. Raw packets seen, filtered out, and parse failures are always
+tracked, whether or not `--reassemble` is used. Flow counters reflect the
+whole `--reassemble` run and are populated once, at the end of capture; they
+are all zero when `--reassemble` is not used. Pcap driver counters
+(`pcap_stats`) are only queried for live captures; offline reads (`--read`) and
+platforms that do not support driver-level counters report them as
+unavailable.
+
+A single packet the parser cannot summarize no longer aborts the whole
+capture: it is counted as a parse failure and skipped, so a live capture
+keeps running past occasional malformed or truncated packets. This applies to
+both directly captured packets and packets reassembled from IPv4 fragments.
 
 ## Tests
 
@@ -602,6 +662,29 @@ Run static analysis with clang-tidy when available, or cppcheck when available:
 ```sh
 make static-check
 ```
+
+## Benchmarks
+
+Run lightweight local benchmarks for the parser, app decoders, filters, and
+TCP reassembly:
+
+```sh
+make bench
+```
+
+Each benchmark runs a fixed iteration count of one hot function against
+synthetic in-memory data and reports throughput:
+
+```text
+Running bench_parser...
+parser_parse_packet                  500000 iters    0.1812 s         2759717 ops/sec       362.4 ns/op
+```
+
+These are simple wall-clock loop benchmarks meant to catch gross regressions
+or compare before/after changes locally, not a statistical benchmarking
+framework. `make bench` builds and runs `bench_parser`, `bench_app_decoder`
+(HTTP, DNS, TLS, and signature-sniffed decoding), `bench_filters`, and
+`bench_reassembly`, then runs `make clean` afterward, matching `make test`.
 
 ## Continuous Integration
 
@@ -716,8 +799,9 @@ Examples:
 include/          Public headers
 src/              MiniSniffer implementation
 tests/            Unit tests
+bench/            Lightweight local benchmarks
 docs/             Architecture and project documentation
-Makefile          Build, test, check, install, and clean targets
+Makefile          Build, test, bench, check, install, and clean targets
 README.md         Project documentation
 ```
 
@@ -767,6 +851,18 @@ Important modules:
   a new packet arrives for any tracked flow (or once more at capture
   shutdown), not on a wall-clock timer. A live capture with no further traffic
   after a flow closes will not free that flow's slot until shutdown.
+- BPF pre-filtering only ever covers `--protocol` (tcp/udp/icmp/arp; `other`
+  contributes no clause), `--port`, and `--host`; it is strictly an
+  optimization; every displayed packet is always re-verified by the full
+  software filter chain. Compile or install failures fall back to full
+  software filtering rather than failing capture.
+- A packet the parser cannot summarize at all is skipped and counted as a
+  parse failure rather than aborting capture; this is expected to be
+  extremely rare, since malformed or truncated header fields are otherwise
+  handled by classifying the packet as `OTHER`.
+- `pcap_stats` (packets received/dropped/interface-dropped) is only queried
+  for live captures; it is not meaningful for offline reads and is not
+  supported on every platform.
 - HTTP Host, DNS query, and TLS SNI filters default to normalized domain
   matching: ASCII case-insensitive comparison with one trailing root dot
   ignored. Exact matching is available at runtime; IDNA matching requires a

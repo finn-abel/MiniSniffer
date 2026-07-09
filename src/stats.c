@@ -51,6 +51,30 @@ void stats_update(PacketStats *stats, const PacketInfo *info) {
     }
 }
 
+void stats_record_raw_packet(PacketStats *stats) {
+    if (stats == NULL) {
+        return;
+    }
+
+    stats->raw_packets_seen++;
+}
+
+void stats_record_parse_failure(PacketStats *stats) {
+    if (stats == NULL) {
+        return;
+    }
+
+    stats->parse_failures++;
+}
+
+void stats_record_filtered_out(PacketStats *stats) {
+    if (stats == NULL) {
+        return;
+    }
+
+    stats->packets_filtered_out++;
+}
+
 /*
  * Folds a point-in-time flow table snapshot into PacketStats so --stats can
  * report flow lifecycle and reassembly memory usage alongside packet counts.
@@ -77,6 +101,34 @@ void stats_apply_flow_table(PacketStats *stats, const FlowTable *table) {
     stats->flow_stream_bytes_configured_max = snapshot.stream_bytes_configured_max;
 }
 
+void stats_apply_ipv4_fragment_table(PacketStats *stats, const IPv4FragmentTable *table) {
+    if (stats == NULL || table == NULL) {
+        return;
+    }
+
+    stats->ipv4_fragment_bytes_in_use = table->used_bytes;
+    stats->ipv4_fragment_bytes_configured_max = table->max_bytes;
+}
+
+void stats_apply_pcap_drops(PacketStats *stats, bool available, uint32_t received,
+                            uint32_t dropped, uint32_t if_dropped) {
+    if (stats == NULL) {
+        return;
+    }
+
+    stats->pcap_stats_available = available;
+    if (!available) {
+        stats->pcap_packets_received = 0;
+        stats->pcap_packets_dropped = 0;
+        stats->pcap_packets_if_dropped = 0;
+        return;
+    }
+
+    stats->pcap_packets_received = received;
+    stats->pcap_packets_dropped = dropped;
+    stats->pcap_packets_if_dropped = if_dropped;
+}
+
 /*
  * Prints a compact summary after capture.
  * Average size uses integer division because sizes are displayed as bytes.
@@ -93,6 +145,9 @@ void stats_print(const PacketStats *stats) {
     }
 
     printf("Displayed packets: %u\n", stats->total_packets);
+    printf("Raw packets seen: %u\n", stats->raw_packets_seen);
+    printf("Packets filtered out: %u\n", stats->packets_filtered_out);
+    printf("Parse failures: %u\n", stats->parse_failures);
     printf("TCP: %u\n", stats->tcp_packets);
     printf("UDP: %u\n", stats->udp_packets);
     printf("ICMP: %u\n", stats->icmp_packets);
@@ -105,6 +160,16 @@ void stats_print(const PacketStats *stats) {
     printf("IPv4 fragments expired: %u\n", stats->ipv4_fragments_expired);
     printf("IPv4 fragments malformed: %u\n", stats->ipv4_fragments_malformed);
     printf("IPv4 fragments dropped: %u\n", stats->ipv4_fragments_dropped);
+    printf("IPv4 fragment bytes in use: %zu\n", stats->ipv4_fragment_bytes_in_use);
+    printf("IPv4 fragment bytes configured max: %zu\n",
+           stats->ipv4_fragment_bytes_configured_max);
+    if (stats->pcap_stats_available) {
+        printf("Pcap packets received: %u\n", stats->pcap_packets_received);
+        printf("Pcap packets dropped: %u\n", stats->pcap_packets_dropped);
+        printf("Pcap interface drops: %u\n", stats->pcap_packets_if_dropped);
+    } else {
+        printf("Pcap driver stats: unavailable\n");
+    }
     printf("App decode no_match: %u\n", stats->app_decode_no_match);
     printf("App decode need_more: %u\n", stats->app_decode_need_more);
     printf("App decode malformed: %u\n", stats->app_decode_malformed);

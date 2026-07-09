@@ -35,6 +35,7 @@ void config_init_defaults(AppConfig *config) {
     config->read_path[0] = '\0';
     config->write_path_enabled = false;
     config->write_path[0] = '\0';
+    config->no_bpf = false;
     config->filter_protocol_enabled = 0;
     config->filter_protocol = PROTO_OTHER;
     config->filter_port_enabled = 0;

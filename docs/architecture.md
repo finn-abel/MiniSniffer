@@ -22,6 +22,33 @@ Capture startup uses the parsed `AppConfig` from `src/cli.c` and
 `src/config.c`. Packet capture usually requires elevated operating-system
 permissions, but MiniSniffer does not attempt to bypass those permissions.
 
+After confirming a supported datalink type, `install_bpf_filter` compiles and
+installs a BPF pre-filter (`pcap_compile`/`pcap_setfilter`) when
+`build_bpf_filter_expression` can build one from the simple filters enabled
+(`--protocol` for tcp/udp/icmp/arp, `--port`, `--host`) and `--no-bpf` was not
+passed. This runs identically for live and offline (`--read`) captures. It is
+purely an optimization: it only ever reduces how many packets libpcap
+delivers to the process; every displayed packet is still fully re-checked by
+`src/filters.c` afterward, so a compile or install failure (logged as a
+warning via `pcap_geterr`) just falls back to inspecting every packet in
+software rather than aborting capture. Payload and app-layer filters can
+never be expressed in BPF and always run in software.
+
+A packet the parser cannot summarize at all (`parser_parse_packet_with_datalink`
+returning nonzero) is counted via `stats_record_parse_failure` and skipped
+with `continue`, rather than aborting the whole capture as earlier versions
+did; the same treatment applies to a packet reassembled from IPv4 fragments
+that fails to re-parse. `stats_record_raw_packet` counts every packet
+libpcap delivers regardless of parse or filter outcome, and
+`stats_record_filtered_out` counts packets that parsed successfully but did
+not pass the active filters, giving `--stats` a full accounting of the
+raw-seen -> parsed -> filtered -> displayed funnel.
+
+At the end of a run, `capture_start` also queries `pcap_stats` for live
+captures only (it is not meaningful for savefiles) and folds IPv4 fragment
+table memory usage into `PacketStats` via `stats_apply_ipv4_fragment_table`,
+alongside the existing flow-table snapshot.
+
 ### Parser
 
 `src/parser.c` converts supported libpcap link-layer packets into bounded
@@ -153,6 +180,11 @@ and ignores one trailing root dot. `exact` mode uses byte-for-byte comparison.
 `idna` mode is available only in builds compiled with `WITH_LIBIDN2=1`; it uses
 libidn2 conversion before normalized comparison.
 
+`--protocol` (tcp/udp/icmp/arp), `--port`, and `--host` are additionally
+compiled into a kernel-level BPF pre-filter by `src/capture.c` (see Capture
+above) when safe to do so; this never changes filtering semantics, since
+`filters_match` still re-checks every field on every displayed packet.
+
 ### Output and Logger
 
 `src/output.c` prints packet summaries, bounded payload previews, decoded app
@@ -167,12 +199,23 @@ formula characters.
 
 ### Stats
 
-`src/stats.c` tracks displayed packet totals when `--stats` is enabled. Stats
-count packets after filtering, not all raw captured packets. IPv4 fragment
-counters track fragments seen, reassembled, expired, malformed, and dropped due
-to caps. App decode counters track displayed packet statuses for no match,
-incomplete input, malformed input, truncation by configured caps, and successful
-decodes.
+`src/stats.c` tracks displayed packet totals when `--stats` is enabled. The
+per-protocol and byte counters count packets after filtering, not all raw
+captured packets; `raw_packets_seen`, `packets_filtered_out`, and
+`parse_failures` (updated via `stats_record_raw_packet`,
+`stats_record_filtered_out`, and `stats_record_parse_failure` in
+`src/capture.c`) track the funnel from "delivered by libpcap" through
+"parsed", "passed filters", and "displayed" regardless of `--reassemble`.
+IPv4 fragment counters track fragments seen, reassembled, expired, malformed,
+and dropped due to caps, plus current/configured-maximum fragment reassembly
+memory via `stats_apply_ipv4_fragment_table`. App decode counters track
+displayed packet statuses for no match, incomplete input, malformed input,
+truncation by configured caps, and successful decodes.
+
+When live capture is used, `stats_apply_pcap_drops` copies `pcap_stats`
+(packets received, dropped, and interface-dropped) into `PacketStats` at the
+end of capture; this is skipped for offline reads, and `pcap_stats_available`
+records whether the driver actually supported the query.
 
 When `--reassemble` is used, `stats_apply_flow_table` copies one point-in-time
 `flow_table_snapshot_stats` result into `PacketStats` at the end of capture,
@@ -183,6 +226,17 @@ overlapping segments, gaps, and current/configured-maximum reassembly stream
 bytes. The snapshot combines already-evicted flows' lifetime totals with the
 live per-direction counters of flows still in the table, so nothing is lost to
 eviction ordering.
+
+### Benchmarks
+
+`bench/` holds lightweight local benchmarks (`bench_parser`, `bench_app_decoder`,
+`bench_filters`, `bench_reassembly`), each a fixed-iteration wall-clock loop
+over one hot function with synthetic in-memory data, sharing timing helpers
+from `bench/bench_common.h`. They link against the same production objects as
+the unit tests (excluding `src/main.c`). `make bench` builds and runs all of
+them, then runs `make clean`, mirroring `make test`. These are meant to catch
+gross regressions or compare before/after changes locally, not to replace
+proper profiling.
 
 ## Safety and Scope
 
@@ -216,3 +270,9 @@ network tool.
   timers, congestion control, or window scaling
 - Idle-timeout and closed-flow eviction are opportunistic (triggered by new
   packet arrivals, plus one pass at capture shutdown), not wall-clock timers
+- BPF pre-filtering covers only `--protocol` (tcp/udp/icmp/arp), `--port`, and
+  `--host`; it is a pure optimization and never the sole enforcement of a
+  filter, and compile/install failures fall back to full software filtering
+- Parser failures are skipped and counted rather than aborting capture
+- `pcap_stats` is only queried for live captures and only when the platform's
+  libpcap driver supports it

@@ -107,6 +107,129 @@ static void close_pcap_writer(pcap_dumper_t **writer) {
     }
 }
 
+#define CAPTURE_BPF_EXPRESSION_LEN 256
+
+/*
+ * Appends " and <clause>" to a bounded BPF expression buffer (or just
+ * "<clause>" if it is the first one). Returns false when the clause would
+ * not fit, in which case the caller abandons BPF pre-filtering entirely
+ * rather than installing a partial, possibly incorrect filter.
+ */
+static bool append_bpf_clause(char *expression, size_t expression_size, const char *clause) {
+    size_t current_length = strlen(expression);
+    int written;
+
+    if (current_length == 0) {
+        written = snprintf(expression, expression_size, "%s", clause);
+    } else {
+        written = snprintf(expression + current_length, expression_size - current_length,
+                           " and %s", clause);
+    }
+
+    return written >= 0 && (size_t)written < expression_size - current_length;
+}
+
+/*
+ * Builds a conservative BPF expression covering only the filters that
+ * translate exactly to kernel-level primitives: protocol, port, and host.
+ * Payload and app-layer filters can never be expressed safely in BPF (they
+ * require inspecting reassembled or decoded content BPF cannot see), so they
+ * always run in user space regardless of this pre-filter; installing this
+ * expression only ever reduces how many packets libpcap delivers, and the
+ * full software filter chain still re-checks every field afterward.
+ *
+ * Protocol "other" has no safe BPF equivalent (it means "none of the
+ * protocols MiniSniffer recognizes"), so it contributes no clause; port and
+ * host filters still narrow the capture even when protocol cannot.
+ *
+ * Returns false when no clause could be built, meaning no BPF filter should
+ * be installed at all.
+ */
+static bool build_bpf_filter_expression(const AppConfig *config, char *expression,
+                                        size_t expression_size) {
+    bool has_clause = false;
+
+    if (config == NULL || expression == NULL || expression_size == 0) {
+        return false;
+    }
+    expression[0] = '\0';
+
+    if (config->filter_protocol_enabled) {
+        const char *clause = NULL;
+
+        if (config->filter_protocol == PROTO_TCP) {
+            clause = "tcp";
+        } else if (config->filter_protocol == PROTO_UDP) {
+            clause = "udp";
+        } else if (config->filter_protocol == PROTO_ICMP) {
+            clause = "(icmp or icmp6)";
+        } else if (config->filter_protocol == PROTO_ARP) {
+            clause = "arp";
+        }
+        if (clause != NULL) {
+            if (!append_bpf_clause(expression, expression_size, clause)) {
+                return false;
+            }
+            has_clause = true;
+        }
+    }
+
+    if (config->filter_port_enabled) {
+        char clause[32];
+
+        snprintf(clause, sizeof(clause), "port %u", (unsigned int)config->filter_port);
+        if (!append_bpf_clause(expression, expression_size, clause)) {
+            return false;
+        }
+        has_clause = true;
+    }
+
+    if (config->filter_host_enabled) {
+        char clause[MINISNIFFER_IP_TEXT_LEN + 8];
+
+        snprintf(clause, sizeof(clause), "host %s", config->filter_host);
+        if (!append_bpf_clause(expression, expression_size, clause)) {
+            return false;
+        }
+        has_clause = true;
+    }
+
+    return has_clause;
+}
+
+/*
+ * Compiles and installs the BPF pre-filter when one is safe to build.
+ * Failure is never fatal: user-space filtering is always fully correct on
+ * its own, so a compile or install failure just falls back to inspecting
+ * every packet in software.
+ */
+static void install_bpf_filter(pcap_t *handle, const AppConfig *config) {
+    char expression[CAPTURE_BPF_EXPRESSION_LEN];
+    struct bpf_program program;
+
+    if (config->no_bpf || !build_bpf_filter_expression(config, expression, sizeof(expression))) {
+        return;
+    }
+
+    if (pcap_compile(handle, &program, expression, 1, PCAP_NETMASK_UNKNOWN) == -1) {
+        fprintf(stderr,
+                "Warning: BPF filter compilation failed, continuing with full software "
+                "filtering: %s\n",
+                pcap_geterr(handle));
+        return;
+    }
+
+    if (pcap_setfilter(handle, &program) == -1) {
+        fprintf(stderr,
+                "Warning: BPF filter could not be installed, continuing with full software "
+                "filtering: %s\n",
+                pcap_geterr(handle));
+    } else if (config->verbose && !config->quiet && !config->json_output) {
+        printf("BPF filter installed: %s\n", expression);
+    }
+    pcap_freecode(&program);
+}
+
 static int has_ipv4_address(const pcap_if_t *device) {
     pcap_addr_t *address;
 
@@ -490,6 +613,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         pcap_close(handle);
         return 1;
     }
+    install_bpf_filter(handle, config);
 
     if (config->write_path_enabled &&
         open_pcap_writer(handle, config->write_path, &pcap_writer) != 0) {
@@ -571,15 +695,20 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         if (result == -2) {
             break;
         }
+        stats_record_raw_packet(stats);
 
+        /*
+         * A single malformed packet should not abort a long-running capture.
+         * Count it and move on; the parser itself already treats unreadable
+         * bytes as PROTO_OTHER wherever it safely can, so a nonzero result
+         * here means something the parser could not even summarize.
+         */
         if (parser_parse_packet_with_datalink(packet, header->caplen, datalink_type, &info) != 0) {
-            fprintf(stderr, "Packet parsing failed.\n");
-            (void)csv_logger_close();
-            close_pcap_writer(&pcap_writer);
-            ipv4_fragment_table_cleanup(&fragment_table);
-            flow_table_cleanup(&flow_table);
-            pcap_close(handle);
-            return 1;
+            stats_record_parse_failure(stats);
+            if (!config->quiet) {
+                fprintf(stderr, "Warning: failed to parse a captured packet; skipping.\n");
+            }
+            continue;
         }
         set_packet_timestamp(&info, header);
         packet_time = (uint64_t)header->ts.tv_sec;
@@ -595,13 +724,13 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
                                                       fragment_result.packet_length, DLT_RAW,
                                                       &assembled_info) != 0) {
                     free(assembled_packet);
-                    fprintf(stderr, "Packet parsing failed.\n");
-                    (void)csv_logger_close();
-                    close_pcap_writer(&pcap_writer);
-                    ipv4_fragment_table_cleanup(&fragment_table);
-                    flow_table_cleanup(&flow_table);
-                    pcap_close(handle);
-                    return 1;
+                    stats_record_parse_failure(stats);
+                    if (!config->quiet) {
+                        fprintf(stderr,
+                                "Warning: failed to parse a reassembled IPv4 datagram; "
+                                "skipping.\n");
+                    }
+                    continue;
                 }
                 set_packet_timestamp(&assembled_info, header);
                 effective_info = &assembled_info;
@@ -672,6 +801,7 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         filter_context.flow_app = filter_flow_app_ptr;
         filter_context.flow_is_classified = flow_was_classified_before_packet;
         if (!filters_match(config, &filter_context)) {
+            stats_record_filtered_out(stats);
             free(assembled_packet);
             continue;
         }
@@ -729,6 +859,22 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
      */
     flow_table_evict_closed(&flow_table);
     stats_apply_flow_table(stats, &flow_table);
+    stats_apply_ipv4_fragment_table(stats, &fragment_table);
+    /*
+     * pcap_stats reports driver/kernel-level counters. It is only meaningful
+     * for live captures; savefiles have no such counters to report.
+     */
+    if (!config->read_path_enabled) {
+        struct pcap_stat pcap_statistics;
+
+        if (pcap_stats(handle, &pcap_statistics) == 0) {
+            stats_apply_pcap_drops(stats, true, (uint32_t)pcap_statistics.ps_recv,
+                                   (uint32_t)pcap_statistics.ps_drop,
+                                   (uint32_t)pcap_statistics.ps_ifdrop);
+        } else {
+            stats_apply_pcap_drops(stats, false, 0, 0, 0);
+        }
+    }
     ipv4_fragment_table_cleanup(&fragment_table);
     flow_table_cleanup(&flow_table);
     close_pcap_writer(&pcap_writer);

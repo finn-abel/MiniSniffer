@@ -11,6 +11,7 @@ PCAP_LIBS = -lpcap
 endif
 INCLUDES = -Iinclude $(PCAP_CFLAGS)
 TEST_INCLUDES = $(INCLUDES) -Itests
+BENCH_INCLUDES = $(INCLUDES) -Ibench
 LDLIBS ?= $(PCAP_LIBS)
 ifeq ($(WITH_LIBIDN2),1)
 CFLAGS += -DMINISNIFFER_WITH_LIBIDN2
@@ -30,6 +31,9 @@ SRC = src/main.c src/config.c src/cli.c src/common.c src/capture.c src/parser.c 
 # Add test source files here.
 TEST_SRC = tests/test_config.c tests/test_cli.c tests/test_common.c tests/test_capture.c tests/test_offline_pcap.c tests/test_parser.c tests/test_filter.c tests/test_filters.c tests/test_flow.c tests/test_stream_buffer.c tests/test_tcp_reassembly.c tests/test_ipv4_frag.c tests/test_flow_app_decode.c tests/test_flow_filters.c tests/test_logger.c tests/test_csv_logger.c tests/test_output.c tests/test_stats.c tests/test_app_decoder.c tests/test_app_http.c tests/test_app_dns.c tests/test_app_tls.c tests/test_app_dhcp.c tests/test_app_quic.c tests/test_byte_reader.c
 
+# Add lightweight benchmark source files here.
+BENCH_SRC = bench/bench_parser.c bench/bench_app_decoder.c bench/bench_filters.c bench/bench_reassembly.c
+
 OBJ = $(SRC:.c=.o)
 
 # Source files needed for tests should not include src/main.c,
@@ -39,8 +43,10 @@ TEST_SUPPORT_OBJ = $(TEST_SUPPORT_SRC:.c=.o)
 
 TEST_TARGETS = $(TEST_SRC:tests/%.c=%)
 TEST_OBJ = $(TEST_SRC:.c=.o)
-FORMAT_FILES = $(SRC) $(TEST_SRC) $(wildcard include/*.h tests/*.h)
-STATIC_FILES = $(SRC) $(TEST_SRC)
+BENCH_TARGETS = $(BENCH_SRC:bench/%.c=%)
+BENCH_OBJ = $(BENCH_SRC:.c=.o)
+FORMAT_FILES = $(SRC) $(TEST_SRC) $(BENCH_SRC) $(wildcard include/*.h tests/*.h bench/*.h)
+STATIC_FILES = $(SRC) $(TEST_SRC) $(BENCH_SRC)
 
 all: $(TARGET)
 
@@ -50,17 +56,34 @@ $(TARGET): $(OBJ)
 tests/%.o: tests/%.c
 	$(CC) $(CFLAGS) $(TEST_INCLUDES) -c $< -o $@
 
+bench/%.o: bench/%.c
+	$(CC) $(CFLAGS) $(BENCH_INCLUDES) -c $< -o $@
+
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 %: tests/%.o $(TEST_SUPPORT_OBJ)
 	$(CC) $(CFLAGS) $(TEST_INCLUDES) -o $@ $^ $(LDLIBS)
 
+# Static pattern rule restricted to BENCH_TARGETS so it cannot be confused
+# with the generic tests/%.o rule above for a target of the same name.
+$(BENCH_TARGETS): %: bench/%.o $(TEST_SUPPORT_OBJ)
+	$(CC) $(CFLAGS) $(BENCH_INCLUDES) -o $@ $^ $(LDLIBS)
+
 test: $(TEST_TARGETS)
 	@set -e; \
 	for test in $(TEST_TARGETS); do \
 		echo "Running $$test..."; \
 		./$$test; \
+		echo ""; \
+	done; \
+	$(MAKE) clean
+
+bench: $(BENCH_TARGETS)
+	@set -e; \
+	for b in $(BENCH_TARGETS); do \
+		echo "Running $$b..."; \
+		./$$b; \
 		echo ""; \
 	done; \
 	$(MAKE) clean
@@ -124,8 +147,8 @@ coverage:
 	$(MAKE) clean
 
 clean:
-	rm -f $(OBJ) $(TEST_SUPPORT_OBJ) $(TEST_OBJ) $(TARGET) $(TEST_TARGETS)
-	rm -rf *.dSYM tests/*.dSYM
+	rm -f $(OBJ) $(TEST_SUPPORT_OBJ) $(TEST_OBJ) $(BENCH_OBJ) $(TARGET) $(TEST_TARGETS) $(BENCH_TARGETS)
+	rm -rf *.dSYM tests/*.dSYM bench/*.dSYM
 
 run: $(TARGET)
 	./$(TARGET)
@@ -165,4 +188,4 @@ install: $(TARGET)
 uninstall:
 	rm -f '$(DESTDIR)$(BINDIR)/$(TARGET)'
 
-.PHONY: all check clean coverage format format-check install run sanitize static-check test uninstall
+.PHONY: all bench check clean coverage format format-check install run sanitize static-check test uninstall

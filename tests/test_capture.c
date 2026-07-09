@@ -16,6 +16,10 @@
 #define pcap_next_ex test_pcap_next_ex
 #define pcap_open_offline test_pcap_open_offline
 #define pcap_open_live test_pcap_open_live
+#define pcap_compile test_pcap_compile
+#define pcap_setfilter test_pcap_setfilter
+#define pcap_freecode test_pcap_freecode
+#define pcap_stats test_pcap_stats
 #include "../src/capture.c"
 #undef capture_list_interfaces
 #undef capture_start
@@ -30,6 +34,10 @@
 #undef pcap_next_ex
 #undef pcap_open_offline
 #undef pcap_open_live
+#undef pcap_compile
+#undef pcap_setfilter
+#undef pcap_freecode
+#undef pcap_stats
 
 #define TEST_MAX_PACKETS 8
 
@@ -55,6 +63,17 @@ typedef struct {
     struct pcap_pkthdr dumped_headers[TEST_MAX_PACKETS];
     const unsigned char *dumped_packets[TEST_MAX_PACKETS];
     char error[PCAP_ERRBUF_SIZE];
+    int compile_succeeds;
+    int setfilter_succeeds;
+    int compile_count;
+    int setfilter_count;
+    int freecode_count;
+    char last_compile_expression[256];
+    int pcap_stats_succeeds;
+    int pcap_stats_call_count;
+    uint32_t stats_ps_recv;
+    uint32_t stats_ps_drop;
+    uint32_t stats_ps_ifdrop;
 } FakePcapState;
 
 static FakePcapState fake_pcap;
@@ -65,7 +84,58 @@ static void reset_fake_pcap(void) {
     fake_pcap.open_offline_succeeds = 1;
     fake_pcap.dump_fopen_succeeds = 1;
     fake_pcap.datalink = DLT_EN10MB;
+    fake_pcap.compile_succeeds = 1;
+    fake_pcap.setfilter_succeeds = 1;
+    fake_pcap.pcap_stats_succeeds = 1;
     snprintf(fake_pcap.error, sizeof(fake_pcap.error), "synthetic pcap error");
+}
+
+int test_pcap_compile(pcap_t *handle, struct bpf_program *program, const char *expression,
+                      int optimize, bpf_u_int32 netmask) {
+    (void)optimize;
+    (void)netmask;
+    assert(handle == (pcap_t *)&fake_pcap);
+    fake_pcap.compile_count++;
+    fake_pcap.last_compile_expression[0] = '\0';
+    if (expression != NULL) {
+        snprintf(fake_pcap.last_compile_expression, sizeof(fake_pcap.last_compile_expression), "%s",
+                expression);
+    }
+    if (!fake_pcap.compile_succeeds) {
+        snprintf(fake_pcap.error, sizeof(fake_pcap.error), "synthetic compile error");
+        return -1;
+    }
+    memset(program, 0, sizeof(*program));
+    return 0;
+}
+
+int test_pcap_setfilter(pcap_t *handle, struct bpf_program *program) {
+    (void)program;
+    assert(handle == (pcap_t *)&fake_pcap);
+    fake_pcap.setfilter_count++;
+    if (!fake_pcap.setfilter_succeeds) {
+        snprintf(fake_pcap.error, sizeof(fake_pcap.error), "synthetic setfilter error");
+        return -1;
+    }
+    return 0;
+}
+
+void test_pcap_freecode(struct bpf_program *program) {
+    (void)program;
+    fake_pcap.freecode_count++;
+}
+
+int test_pcap_stats(pcap_t *handle, struct pcap_stat *ps) {
+    assert(handle == (pcap_t *)&fake_pcap);
+    fake_pcap.pcap_stats_call_count++;
+    if (!fake_pcap.pcap_stats_succeeds) {
+        return -1;
+    }
+    memset(ps, 0, sizeof(*ps));
+    ps->ps_recv = fake_pcap.stats_ps_recv;
+    ps->ps_drop = fake_pcap.stats_ps_drop;
+    ps->ps_ifdrop = fake_pcap.stats_ps_ifdrop;
+    return 0;
 }
 
 int test_pcap_findalldevs(pcap_if_t **devices, char *error_buffer) {
@@ -558,13 +628,25 @@ static void test_capture_loop_handles_timeout_error_and_bad_packet(void) {
     assert(capture_start_mocked(&config, NULL) != 0);
     assert(fake_pcap.close_count == 1);
 
+    /*
+     * A packet the parser cannot summarize is skipped rather than aborting
+     * the whole capture; it is counted as a parse failure instead.
+     */
     reset_fake_pcap();
     set_single_device(&device);
     fake_pcap.next_results[0] = 1;
     fake_pcap.headers[0].caplen = 1;
     fake_pcap.packets[0] = NULL;
     fake_pcap.next_count = 1;
-    assert(capture_start_mocked(&config, NULL) != 0);
+    {
+        PacketStats stats;
+
+        stats_init(&stats);
+        assert(capture_start_mocked(&config, &stats) == 0);
+        assert(stats.parse_failures == 1);
+        assert(stats.total_packets == 0);
+        assert(stats.raw_packets_seen == 1);
+    }
     assert(fake_pcap.close_count == 1);
 }
 
@@ -766,6 +848,10 @@ static void test_capture_reassembles_ipv4_fragments_for_app_decode(void) {
     assert(stats.ipv4_fragments_reassembled == 1);
     assert(stats.ipv4_fragments_malformed == 0);
     assert(stats.ipv4_fragments_dropped == 0);
+    assert(stats.ipv4_fragment_bytes_configured_max == config.ipv4_fragment_max_bytes);
+    assert(stats.raw_packets_seen == 2);
+    assert(stats.packets_filtered_out == 0);
+    assert(stats.parse_failures == 0);
 }
 
 static void test_flow_decode_stream_app_tracks_fin_rst_and_releases_buffers(void) {
@@ -872,6 +958,226 @@ static void test_capture_reassembled_flow_closes_on_rst_and_updates_stats(void) 
     assert(stats.flow_stream_bytes_in_use == 0);
 }
 
+static void test_build_bpf_filter_expression_covers_simple_filters(void) {
+    AppConfig config;
+    char expression[CAPTURE_BPF_EXPRESSION_LEN];
+
+    assert(!build_bpf_filter_expression(NULL, expression, sizeof(expression)));
+    config_init_defaults(&config);
+    assert(!build_bpf_filter_expression(&config, NULL, sizeof(expression)));
+    assert(!build_bpf_filter_expression(&config, expression, 0));
+
+    /* No simple filters enabled: nothing to install. */
+    config_init_defaults(&config);
+    assert(!build_bpf_filter_expression(&config, expression, sizeof(expression)));
+
+    config_init_defaults(&config);
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_TCP;
+    assert(build_bpf_filter_expression(&config, expression, sizeof(expression)));
+    TEST_ASSERT_STRING_EQUAL(expression, "tcp");
+
+    config_init_defaults(&config);
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_ICMP;
+    assert(build_bpf_filter_expression(&config, expression, sizeof(expression)));
+    TEST_ASSERT_STRING_EQUAL(expression, "(icmp or icmp6)");
+
+    config_init_defaults(&config);
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_ARP;
+    assert(build_bpf_filter_expression(&config, expression, sizeof(expression)));
+    TEST_ASSERT_STRING_EQUAL(expression, "arp");
+
+    /* "other" has no safe BPF equivalent and contributes no clause. */
+    config_init_defaults(&config);
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_OTHER;
+    assert(!build_bpf_filter_expression(&config, expression, sizeof(expression)));
+
+    /* "other" plus a port still lets port narrow the capture. */
+    config_init_defaults(&config);
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_OTHER;
+    config.filter_port_enabled = 1;
+    config.filter_port = 80;
+    assert(build_bpf_filter_expression(&config, expression, sizeof(expression)));
+    TEST_ASSERT_STRING_EQUAL(expression, "port 80");
+
+    config_init_defaults(&config);
+    config.filter_port_enabled = 1;
+    config.filter_port = 80;
+    config.filter_host_enabled = 1;
+    snprintf(config.filter_host, sizeof(config.filter_host), "8.8.8.8");
+    assert(build_bpf_filter_expression(&config, expression, sizeof(expression)));
+    TEST_ASSERT_STRING_EQUAL(expression, "port 80 and host 8.8.8.8");
+
+    config_init_defaults(&config);
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_TCP;
+    config.filter_port_enabled = 1;
+    config.filter_port = 443;
+    config.filter_host_enabled = 1;
+    snprintf(config.filter_host, sizeof(config.filter_host), "10.0.0.2");
+    assert(build_bpf_filter_expression(&config, expression, sizeof(expression)));
+    TEST_ASSERT_STRING_EQUAL(expression, "tcp and port 443 and host 10.0.0.2");
+
+    /* Payload/app filters never contribute a clause. */
+    config_init_defaults(&config);
+    config.filter_payload_text_enabled = 1;
+    config.filter_payload_text_length = 1;
+    assert(!build_bpf_filter_expression(&config, expression, sizeof(expression)));
+}
+
+static void test_capture_installs_bpf_filter_for_simple_filters(void) {
+    static const uint8_t http_request[] = "GET / HTTP/1.1\r\n\r\n";
+    unsigned char packet[256];
+    size_t packet_length =
+        build_tcp_packet(packet, sizeof(packet), 100, http_request, sizeof(http_request) - 1);
+    char device_name[] = "en-test";
+    pcap_if_t device = make_device(device_name, 0, NULL, NULL);
+    AppConfig config = make_capture_config(device_name);
+
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, packet, packet_length, 10);
+    config.max_packets = 1;
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_TCP;
+    config.filter_port_enabled = 1;
+    config.filter_port = 80;
+
+    assert(capture_start_mocked(&config, NULL) == 0);
+    assert(fake_pcap.compile_count == 1);
+    assert(fake_pcap.setfilter_count == 1);
+    assert(fake_pcap.freecode_count == 1);
+    TEST_ASSERT_STRING_EQUAL(fake_pcap.last_compile_expression, "tcp and port 80");
+
+    /* --no-bpf skips compilation entirely. */
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, packet, packet_length, 10);
+    config.no_bpf = true;
+    assert(capture_start_mocked(&config, NULL) == 0);
+    assert(fake_pcap.compile_count == 0);
+
+    /* No simple filters enabled: nothing to compile. */
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, packet, packet_length, 10);
+    config = make_capture_config(device_name);
+    config.max_packets = 1;
+    assert(capture_start_mocked(&config, NULL) == 0);
+    assert(fake_pcap.compile_count == 0);
+}
+
+static void test_capture_bpf_compile_failure_is_non_fatal(void) {
+    static const uint8_t http_request[] = "GET / HTTP/1.1\r\n\r\n";
+    unsigned char packet[256];
+    size_t packet_length =
+        build_tcp_packet(packet, sizeof(packet), 100, http_request, sizeof(http_request) - 1);
+    char device_name[] = "en-test";
+    pcap_if_t device = make_device(device_name, 0, NULL, NULL);
+    AppConfig config = make_capture_config(device_name);
+    PacketStats stats;
+
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, packet, packet_length, 10);
+    fake_pcap.compile_succeeds = 0;
+    config.max_packets = 1;
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_TCP;
+
+    stats_init(&stats);
+    assert(capture_start_mocked(&config, &stats) == 0);
+    assert(stats.total_packets == 1);
+    assert(fake_pcap.setfilter_count == 0);
+    assert(fake_pcap.freecode_count == 0);
+}
+
+static void test_capture_bpf_setfilter_failure_is_non_fatal(void) {
+    static const uint8_t http_request[] = "GET / HTTP/1.1\r\n\r\n";
+    unsigned char packet[256];
+    size_t packet_length =
+        build_tcp_packet(packet, sizeof(packet), 100, http_request, sizeof(http_request) - 1);
+    char device_name[] = "en-test";
+    pcap_if_t device = make_device(device_name, 0, NULL, NULL);
+    AppConfig config = make_capture_config(device_name);
+    PacketStats stats;
+
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, packet, packet_length, 10);
+    fake_pcap.setfilter_succeeds = 0;
+    config.max_packets = 1;
+    config.filter_protocol_enabled = 1;
+    config.filter_protocol = PROTO_TCP;
+
+    stats_init(&stats);
+    assert(capture_start_mocked(&config, &stats) == 0);
+    assert(stats.total_packets == 1);
+    assert(fake_pcap.compile_count == 1);
+    assert(fake_pcap.freecode_count == 1);
+}
+
+static void test_capture_applies_pcap_drops_for_live_capture_only(void) {
+    static const uint8_t http_request[] = "GET / HTTP/1.1\r\n\r\n";
+    unsigned char packet[256];
+    size_t packet_length =
+        build_tcp_packet(packet, sizeof(packet), 100, http_request, sizeof(http_request) - 1);
+    char device_name[] = "en-test";
+    pcap_if_t device = make_device(device_name, 0, NULL, NULL);
+    AppConfig config = make_capture_config(device_name);
+    PacketStats stats;
+
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, packet, packet_length, 10);
+    fake_pcap.stats_ps_recv = 10;
+    fake_pcap.stats_ps_drop = 2;
+    fake_pcap.stats_ps_ifdrop = 1;
+    config.max_packets = 1;
+
+    stats_init(&stats);
+    assert(capture_start_mocked(&config, &stats) == 0);
+    assert(fake_pcap.pcap_stats_call_count == 1);
+    assert(stats.pcap_stats_available == true);
+    assert(stats.pcap_packets_received == 10);
+    assert(stats.pcap_packets_dropped == 2);
+    assert(stats.pcap_packets_if_dropped == 1);
+
+    /* pcap_stats is never queried for offline reads. */
+    reset_fake_pcap();
+    fake_pcap.find_result = -1;
+    queue_packet(0, packet, packet_length, 10);
+    {
+        AppConfig offline_config;
+
+        config_init_defaults(&offline_config);
+        offline_config.read_path_enabled = true;
+        snprintf(offline_config.read_path, sizeof(offline_config.read_path), "%s",
+                "/tmp/input.pcap");
+        offline_config.max_packets = 1;
+
+        stats_init(&stats);
+        assert(capture_start_mocked(&offline_config, &stats) == 0);
+        assert(fake_pcap.pcap_stats_call_count == 0);
+        assert(stats.pcap_stats_available == false);
+    }
+
+    /* When the driver does not support it, the fields are left unpopulated. */
+    reset_fake_pcap();
+    set_single_device(&device);
+    queue_packet(0, packet, packet_length, 10);
+    fake_pcap.pcap_stats_succeeds = 0;
+    config = make_capture_config(device_name);
+    config.max_packets = 1;
+    stats_init(&stats);
+    assert(capture_start_mocked(&config, &stats) == 0);
+    assert(stats.pcap_stats_available == false);
+}
+
 static void test_capture_static_helpers_and_signal_path(void) {
     struct pcap_pkthdr header;
     PacketInfo packet;
@@ -927,6 +1233,11 @@ int main(void) {
     test_capture_reassembles_ipv4_fragments_for_app_decode();
     test_flow_decode_stream_app_tracks_fin_rst_and_releases_buffers();
     test_capture_reassembled_flow_closes_on_rst_and_updates_stats();
+    test_build_bpf_filter_expression_covers_simple_filters();
+    test_capture_installs_bpf_filter_for_simple_filters();
+    test_capture_bpf_compile_failure_is_non_fatal();
+    test_capture_bpf_setfilter_failure_is_non_fatal();
+    test_capture_applies_pcap_drops_for_live_capture_only();
     test_capture_static_helpers_and_signal_path();
 
     printf("All capture tests passed.\n");

@@ -64,6 +64,7 @@ typedef struct {
     char read_path[256];
     bool write_path_enabled;
     char write_path[256];
+    bool no_bpf;
 
     int filter_protocol_enabled;
     Protocol filter_protocol;

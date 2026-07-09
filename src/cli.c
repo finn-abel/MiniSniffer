@@ -19,7 +19,7 @@ static void print_usage(FILE *stream, const char *program_name) {
     fprintf(stream, "       [--host <ip>] [--payload] [--payload-bytes <number>]\n");
     fprintf(stream, "       [--payload-decode-bytes <number>] [--domain-match <mode>]\n");
     fprintf(stream, "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n");
-    fprintf(stream, "       [--read <file.pcap>] [--write <file.pcap>]\n");
+    fprintf(stream, "       [--read <file.pcap>] [--write <file.pcap>] [--no-bpf]\n");
     fprintf(stream, "       [--json] [--flush-log <always|line|exit>]\n");
     fprintf(stream, "       [--decode-app] [--reassemble] [--max-flows <number>]\n");
     fprintf(stream, "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n");
@@ -514,6 +514,9 @@ int cli_parse_args(int argc, char **argv, AppConfig *config) {
             config->color_enabled = false;
         } else if (strcmp(argv[i], "--json") == 0) {
             config->json_output = true;
+        } else if (strcmp(argv[i], "--no-bpf") == 0) {
+            /* Debugging escape hatch: disable kernel-level BPF pre-filtering. */
+            config->no_bpf = true;
             /* Value options update AppConfig and advance past their argument. */
         } else if (strcmp(argv[i], "--interface") == 0) {
             if (!has_value(argc, argv, i)) {

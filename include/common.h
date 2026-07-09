@@ -1,6 +1,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -171,11 +172,34 @@ typedef struct {
 
     size_t total_bytes;
 
+    /*
+     * raw_packets_seen counts every packet libpcap delivered, regardless of
+     * filtering or parse outcome. packets_filtered_out counts packets that
+     * were parsed successfully but did not pass the active filters, so were
+     * never displayed. parse_failures counts packets the parser could not
+     * summarize at all; these are skipped rather than aborting capture.
+     */
+    uint32_t raw_packets_seen;
+    uint32_t packets_filtered_out;
+    uint32_t parse_failures;
+
     uint32_t ipv4_fragments_seen;
     uint32_t ipv4_fragments_reassembled;
     uint32_t ipv4_fragments_expired;
     uint32_t ipv4_fragments_malformed;
     uint32_t ipv4_fragments_dropped;
+    size_t ipv4_fragment_bytes_in_use;
+    size_t ipv4_fragment_bytes_configured_max;
+
+    /*
+     * pcap_stats_available is false for offline reads and on platforms where
+     * libpcap's driver-level counters are not supported; the three counters
+     * below are only meaningful when it is true.
+     */
+    bool pcap_stats_available;
+    uint32_t pcap_packets_received;
+    uint32_t pcap_packets_dropped;
+    uint32_t pcap_packets_if_dropped;
 
     uint32_t app_decode_no_match;
     uint32_t app_decode_need_more;

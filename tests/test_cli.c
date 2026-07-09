@@ -15,7 +15,7 @@ static const char *EXPECTED_USAGE =
     "       [--host <ip>] [--payload] [--payload-bytes <number>]\n"
     "       [--payload-decode-bytes <number>] [--domain-match <mode>]\n"
     "       [--payload-contains <text>] [--payload-hex <hex>] [--log <file>]\n"
-    "       [--read <file.pcap>] [--write <file.pcap>]\n"
+    "       [--read <file.pcap>] [--write <file.pcap>] [--no-bpf]\n"
     "       [--json] [--flush-log <always|line|exit>]\n"
     "       [--decode-app] [--reassemble] [--max-flows <number>]\n"
     "       [--stream-buffer-bytes <number>] [--flow-timeout <seconds>]\n"
@@ -103,6 +103,7 @@ static void test_cli_parse_args_sets_interface_ux_flags(void) {
     char *version[] = {"MiniSniffer", "--version"};
     char *list[] = {"MiniSniffer", "--list-interfaces"};
     char *quiet_verbose[] = {"MiniSniffer", "--quiet", "--verbose", "--no-color", "--json"};
+    char *no_bpf[] = {"MiniSniffer", "--no-bpf"};
     char *flush_always[] = {"MiniSniffer", "--flush-log", "always"};
     char *flush_exit[] = {"MiniSniffer", "--flush-log", "exit"};
 
@@ -120,6 +121,10 @@ static void test_cli_parse_args_sets_interface_ux_flags(void) {
     assert(config.verbose == true);
     assert(config.color_enabled == false);
     assert(config.json_output == true);
+
+    config_init_defaults(&config);
+    assert(cli_parse_args(2, no_bpf, &config) == 0);
+    assert(config.no_bpf == true);
 
     config_init_defaults(&config);
     assert(cli_parse_args(3, flush_always, &config) == 0);

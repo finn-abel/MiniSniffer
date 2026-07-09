@@ -46,6 +46,15 @@ static void test_stats_init_clears_counters(void) {
     stats.flow_gaps = 99;
     stats.flow_stream_bytes_in_use = 99;
     stats.flow_stream_bytes_configured_max = 99;
+    stats.raw_packets_seen = 99;
+    stats.packets_filtered_out = 99;
+    stats.parse_failures = 99;
+    stats.ipv4_fragment_bytes_in_use = 99;
+    stats.ipv4_fragment_bytes_configured_max = 99;
+    stats.pcap_stats_available = true;
+    stats.pcap_packets_received = 99;
+    stats.pcap_packets_dropped = 99;
+    stats.pcap_packets_if_dropped = 99;
 
     stats_init(&stats);
 
@@ -78,6 +87,15 @@ static void test_stats_init_clears_counters(void) {
     assert(stats.flow_gaps == 0);
     assert(stats.flow_stream_bytes_in_use == 0);
     assert(stats.flow_stream_bytes_configured_max == 0);
+    assert(stats.raw_packets_seen == 0);
+    assert(stats.packets_filtered_out == 0);
+    assert(stats.parse_failures == 0);
+    assert(stats.ipv4_fragment_bytes_in_use == 0);
+    assert(stats.ipv4_fragment_bytes_configured_max == 0);
+    assert(stats.pcap_stats_available == false);
+    assert(stats.pcap_packets_received == 0);
+    assert(stats.pcap_packets_dropped == 0);
+    assert(stats.pcap_packets_if_dropped == 0);
 }
 
 static void test_stats_update_tracks_protocol_counts_and_bytes(void) {
@@ -147,6 +165,64 @@ static void test_stats_apply_flow_table_copies_snapshot(void) {
     flow_table_cleanup(&table);
 }
 
+static void test_stats_record_helpers_increment_counters(void) {
+    PacketStats stats;
+
+    stats_init(&stats);
+    stats_record_raw_packet(&stats);
+    stats_record_raw_packet(&stats);
+    stats_record_parse_failure(&stats);
+    stats_record_filtered_out(&stats);
+    stats_record_filtered_out(&stats);
+    stats_record_filtered_out(&stats);
+
+    assert(stats.raw_packets_seen == 2);
+    assert(stats.parse_failures == 1);
+    assert(stats.packets_filtered_out == 3);
+
+    stats_record_raw_packet(NULL);
+    stats_record_parse_failure(NULL);
+    stats_record_filtered_out(NULL);
+}
+
+static void test_stats_apply_ipv4_fragment_table_copies_usage(void) {
+    IPv4FragmentTable table;
+    PacketStats stats;
+
+    assert(ipv4_fragment_table_init(&table, 4, 4096, 30));
+    stats_init(&stats);
+
+    stats_apply_ipv4_fragment_table(&stats, &table);
+    assert(stats.ipv4_fragment_bytes_in_use == table.used_bytes);
+    assert(stats.ipv4_fragment_bytes_configured_max == 4096);
+
+    stats_apply_ipv4_fragment_table(NULL, &table);
+    stats_apply_ipv4_fragment_table(&stats, NULL);
+    assert(stats.ipv4_fragment_bytes_configured_max == 4096);
+
+    ipv4_fragment_table_cleanup(&table);
+}
+
+static void test_stats_apply_pcap_drops_toggles_availability(void) {
+    PacketStats stats;
+
+    stats_init(&stats);
+    stats_apply_pcap_drops(&stats, true, 100, 5, 1);
+    assert(stats.pcap_stats_available == true);
+    assert(stats.pcap_packets_received == 100);
+    assert(stats.pcap_packets_dropped == 5);
+    assert(stats.pcap_packets_if_dropped == 1);
+
+    /* Marking stats unavailable clears any stale counters. */
+    stats_apply_pcap_drops(&stats, false, 999, 999, 999);
+    assert(stats.pcap_stats_available == false);
+    assert(stats.pcap_packets_received == 0);
+    assert(stats.pcap_packets_dropped == 0);
+    assert(stats.pcap_packets_if_dropped == 0);
+
+    stats_apply_pcap_drops(NULL, true, 1, 1, 1);
+}
+
 static void test_stats_functions_accept_null_inputs(void) {
     PacketStats stats;
     PacketInfo packet = make_packet(PROTO_TCP, 100);
@@ -175,6 +251,9 @@ int main(void) {
     test_stats_init_clears_counters();
     test_stats_update_tracks_protocol_counts_and_bytes();
     test_stats_apply_flow_table_copies_snapshot();
+    test_stats_record_helpers_increment_counters();
+    test_stats_apply_ipv4_fragment_table_copies_usage();
+    test_stats_apply_pcap_drops_toggles_availability();
     test_stats_functions_accept_null_inputs();
     test_stats_print_handles_empty_and_populated_stats();
 
