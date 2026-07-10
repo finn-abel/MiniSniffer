@@ -327,6 +327,19 @@ IPv4FragmentProcessResult ipv4_fragment_table_process(IPv4FragmentTable *table,
         }
     }
 
+    /*
+     * The first fragment (offset 0) carries the authoritative IP header for the
+     * whole datagram; later fragments may omit non-copied options and so present
+     * a shorter header. Adopt the offset-0 fragment's header whenever it arrives,
+     * independent of arrival order, so the rebuilt datagram is reconstructed from
+     * the real first-fragment header rather than whichever fragment happened to
+     * create the table entry.
+     */
+    if (fragment->ipv4_fragment_offset == 0) {
+        datagram->header_length = fragment->ipv4_header_length;
+        memcpy(datagram->header, fragment->ipv4_header, fragment->ipv4_header_length);
+    }
+
     start = fragment->ipv4_fragment_offset;
     end = start + fragment->ipv4_fragment_payload_length;
     datagram->last_seen_time = now_seconds;

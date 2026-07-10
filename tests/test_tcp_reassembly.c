@@ -108,13 +108,20 @@ static void test_tcp_reassembly_tracks_fin_and_rst(void) {
     tcp_reassembly_direction_cleanup(&rst_state);
 }
 
-static void test_tcp_reassembly_drops_when_memory_cap_is_exceeded(void) {
+static void test_tcp_reassembly_keeps_head_when_segment_exceeds_capacity(void) {
     TcpReassemblyDirection state;
 
+    /*
+     * A single segment larger than the whole buffer cannot be stored in full.
+     * The contiguous head that fits is kept so decoders still see the start of
+     * the stream, and the direction is then marked unusable so no later segment
+     * is spliced onto the byte the truncation dropped.
+     */
     assert(tcp_reassembly_direction_init(&state, 4));
     assert(tcp_reassembly_process_segment(&state, 100, 0, (const uint8_t *)"ABCDE", 5) ==
-           TCP_REASSEMBLY_DROPPED);
-    assert(stream_buffer_length(&state.stream) == 0);
+           TCP_REASSEMBLY_ACCEPTED);
+    assert(stream_buffer_length(&state.stream) == 4);
+    assert(memcmp(stream_buffer_data(&state.stream), "ABCD", 4) == 0);
     assert(state.unusable);
     assert(tcp_reassembly_process_segment(&state, 105, 0, (const uint8_t *)"F", 1) ==
            TCP_REASSEMBLY_DROPPED);
@@ -448,7 +455,7 @@ int main(void) {
     test_tcp_reassembly_records_gap_without_advancing_stream();
     test_tcp_reassembly_trims_overlap_predictably();
     test_tcp_reassembly_tracks_fin_and_rst();
-    test_tcp_reassembly_drops_when_memory_cap_is_exceeded();
+    test_tcp_reassembly_keeps_head_when_segment_exceeds_capacity();
     test_tcp_reassembly_handles_sequence_wraparound();
     test_tcp_reassembly_track_flags_updates_only_sticky_state();
     test_tcp_reassembly_release_buffers_frees_memory_and_preserves_tracking();

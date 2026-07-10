@@ -786,12 +786,18 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
         } else {
             effective_info->app_decode_status = APP_DECODE_STATUS_NOT_RUN;
         }
+        if (effective_info->app_decode_status == APP_DECODE_STATUS_NOT_RUN &&
+            flow_decode_status != APP_DECODE_STATUS_NOT_RUN) {
+            effective_info->app_decode_status = flow_decode_status;
+        }
+        /*
+         * Stats count the wire packet (info), which for a reassembled datagram
+         * is the completing fragment, so byte and protocol totals stay accurate.
+         * Keep its decode status aligned with the datagram actually decoded so
+         * the app-decode counters record the right outcome.
+         */
         if (effective_info != &info) {
             info.app_decode_status = effective_info->app_decode_status;
-        }
-        if (info.app_decode_status == APP_DECODE_STATUS_NOT_RUN &&
-            flow_decode_status != APP_DECODE_STATUS_NOT_RUN) {
-            info.app_decode_status = flow_decode_status;
         }
 
         filter_context.packet = effective_info;
@@ -815,21 +821,28 @@ int capture_start(const AppConfig *config, PacketStats *stats) {
          * stats, and considered toward --count.
          */
         captured_packets++;
-        info.packet_number = captured_packets;
+        /*
+         * Present the effective packet: for a reassembled IPv4 datagram this is
+         * the rebuilt datagram (with its real 5-tuple and payload), matching the
+         * view the filters above already ran on. For every other packet
+         * effective_info aliases info, so ordinary output is unchanged.
+         */
+        effective_info->packet_number = captured_packets;
         if (config->json_output) {
-            output_print_packet_json(&info, packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
-                                     app_source, config->payload_display_enabled != 0,
-                                     config->payload_preview_bytes);
+            output_print_packet_json(
+                effective_info, packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr, app_source,
+                config->payload_display_enabled != 0, config->payload_preview_bytes);
         } else {
-            packet_info_print(&info);
+            packet_info_print(effective_info);
             if (config->decode_app) {
-                output_print_packet_app_status(info.app_decode_status, packet_app_ptr);
+                output_print_packet_app_status(effective_info->app_decode_status, packet_app_ptr);
             }
             if (config->payload_display_enabled != 0) {
-                packet_info_print_payload(&info, config->payload_preview_bytes);
+                packet_info_print_payload(effective_info, config->payload_preview_bytes);
             }
         }
-        if (csv_logger_write_packet(&info, packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
+        if (csv_logger_write_packet(effective_info,
+                                    packet_app_ptr != NULL ? packet_app_ptr : flow_app_ptr,
                                     app_source) != 0) {
             free(assembled_packet);
             (void)csv_logger_close();

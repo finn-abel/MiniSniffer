@@ -58,6 +58,24 @@ static bool append_stream_data(TcpReassemblyDirection *state, const uint8_t *dat
 }
 
 /*
+ * Appends as much of an in-order segment as the fixed buffer can still hold and
+ * returns the number of bytes stored. A short return means the buffer filled
+ * mid-segment: callers keep the contiguous head that fit (enough to decode the
+ * start of a stream) and then stop reassembling the direction, so no later
+ * segment is ever spliced onto the byte the truncation dropped.
+ */
+static size_t append_stream_best_effort(TcpReassemblyDirection *state, const uint8_t *data,
+                                        size_t length) {
+    size_t room = state->stream.capacity - stream_buffer_length(&state->stream);
+    size_t take = length < room ? length : room;
+
+    if (take == 0 || !append_stream_data(state, data, take)) {
+        return 0;
+    }
+    return take;
+}
+
+/*
  * After in-order data advances next_sequence, previously buffered segments may
  * now fit. Re-run until no pending segment can extend the contiguous stream.
  */
@@ -242,7 +260,7 @@ TcpReassemblyResult tcp_reassembly_process_segment(TcpReassemblyDirection *state
         }
         return TCP_REASSEMBLY_ACCEPTED;
     }
-    if (payload == NULL || payload_length > UINT32_MAX || payload_length > state->stream.capacity) {
+    if (payload == NULL || payload_length > UINT32_MAX) {
         state->unusable = true;
         return TCP_REASSEMBLY_DROPPED;
     }
@@ -285,9 +303,20 @@ TcpReassemblyResult tcp_reassembly_process_segment(TcpReassemblyDirection *state
         data_sequence = state->next_sequence;
     }
 
-    if (!append_stream_data(state, payload, payload_length)) {
-        state->unusable = true;
-        return TCP_REASSEMBLY_DROPPED;
+    {
+        size_t appended = append_stream_best_effort(state, payload, payload_length);
+
+        if (appended < payload_length) {
+            /*
+             * The whole segment does not fit the fixed buffer. Keep the head
+             * that fit so decoders still see the start of the stream, then mark
+             * the direction unusable: refusing further data prevents a later
+             * segment from being spliced onto the truncated tail. ACCEPTED (not
+             * DROPPED) when any head was captured lets the caller decode it.
+             */
+            state->unusable = true;
+            return appended > 0 ? TCP_REASSEMBLY_ACCEPTED : TCP_REASSEMBLY_DROPPED;
+        }
     }
     state->next_sequence = data_sequence + (uint32_t)payload_length;
     if ((flags & TCP_FLAG_FIN) != 0) {

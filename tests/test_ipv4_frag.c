@@ -101,11 +101,18 @@ static void test_ipv4_frag_reassembles_out_of_order(void) {
     assert(ipv4_fragment_table_init(&table, 4, 4096, 30));
     make_fragment(&first, 11, "10.0.0.1", "10.0.0.2", 0, 1, payload, 24);
     make_fragment(&second, 11, "10.0.0.1", "10.0.0.2", 24, 0, payload + 24, 4);
+    /*
+     * Distinct TTLs let the test prove the rebuilt datagram uses the offset-0
+     * fragment's header even though the later fragment created the table entry.
+     */
+    first.ipv4_header[8] = 99;
+    second.ipv4_header[8] = 11;
 
     result = ipv4_fragment_table_process(&table, &second, 1, &stats);
     assert(result.result == IPV4_FRAGMENT_QUEUED);
     result = ipv4_fragment_table_process(&table, &first, 2, &stats);
     assert_assembled_tcp_packet(&result);
+    assert(result.packet[8] == 99);
     free(result.packet);
     ipv4_fragment_table_cleanup(&table);
 }
